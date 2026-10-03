@@ -90,43 +90,65 @@ def call_gemini_with_tools(contents, api_key):
     raise last_err or Exception("All model endpoints busy. Please try again.")
 
 # ==========================================
-# IMAGEN 3 VISUAL OUTFIT GENERATION
+# IMAGEN VISUAL OUTFIT GENERATION (AI Studio Key Compatible)
 # ==========================================
 def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key: str):
     """
-    Generates a full-body visual mockup photo while preserving exact model facial features,
-    body structure, and headgear style/shape, while allowing headgear color customization.
+    Generates a full-body visual mockup photo using Google AI Studio compatible Imagen 3 models.
     """
-    if not NEW_SDK:
-        return None
+    prompt = f"""
+    Full-body professional fashion lookbook studio portrait of the model wearing: {outfit_description}.
+    
+    CRITICAL CONSISTENCY RULES:
+    1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, facial hair, facial shape, skin tone, height, or body structure.
+    2. PRESERVE HEADGEAR STYLE & SHAPE: Maintain the exact style, shape, silhouette, fold structure, and fitting of the subject's {headgear_style}.
+    3. DYNAMIC HEADGEAR COLOR: The color of the {headgear_style} MAY be altered or chosen to match and harmonize perfectly with the outfit palette (top, bottom, shoes).
+    
+    Lighting: Professional studio photography, realistic fabric textures, 4K lookbook output.
+    """
+    
     try:
-        client = genai.Client(api_key=api_key)
-        
-        prompt = f"""
-        Full-body professional fashion lookbook studio portrait of the model wearing: {outfit_description}.
-        
-        CRITICAL CONSISTENCY RULES:
-        1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, facial hair, facial shape, skin tone, height, or body structure. The model must look exactly like the reference subject.
-        2. PRESERVE HEADGEAR STYLE & SHAPE: Maintain the exact style, shape, silhouette, fold structure, and fitting of the subject's {headgear_style}.
-        3. DYNAMIC HEADGEAR COLOR: The color of the {headgear_style} MAY be altered or chosen to match and harmonize perfectly with the outfit palette (top, bottom, shoes).
-        
-        Lighting: Professional studio photography, realistic fabric textures, crisp 4K lookbook output.
-        """
-        
-        result = client.models.generate_images(
-            model='imagen-3.0-generate-002',
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="3:4"
+        if NEW_SDK:
+            client = genai.Client(api_key=api_key)
+            # Use Developer API compatible Imagen endpoint
+            result = client.models.generate_images(
+                model='imagen-3.0-generate-002',
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    aspect_ratio="3:4",
+                    person_generation="ALLOW_ADULT"
+                )
             )
-        )
-        if result.generated_images:
-            image_bytes = result.generated_images[0].image.image_bytes
-            return Image.open(io.BytesIO(image_bytes))
+            if result.generated_images:
+                image_bytes = result.generated_images[0].image.image_bytes
+                return Image.open(io.BytesIO(image_bytes))
+        else:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('imagen-3.0-generate-002')
+            result = model.generate_images(prompt=prompt)
+            if result and hasattr(result, 'images') and result.images:
+                return result.images[0]
     except Exception as e:
-        st.warning(f"Could not generate visual preview image: {str(e)}")
-        return None
+        # Fallback to standard Image model if developer tier requires alternate call
+        try:
+            if NEW_SDK:
+                client = genai.Client(api_key=api_key)
+                result = client.models.generate_images(
+                    model='imagen-3.0-fast-generate-001',
+                    prompt=prompt,
+                    config=types.GenerateImagesConfig(
+                        number_of_images=1,
+                        aspect_ratio="3:4"
+                    )
+                )
+                if result.generated_images:
+                    image_bytes = result.generated_images[0].image.image_bytes
+                    return Image.open(io.BytesIO(image_bytes))
+        except Exception as fallback_err:
+            st.warning(f"Could not generate visual preview image: {str(fallback_err)}")
+            return None
+    return None
 
 # Sidebar Configuration - Auto Reads Secret
 st.sidebar.header("🔑 API Settings")
@@ -331,7 +353,6 @@ with tab_closet:
                     if item.get("image"):
                         st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
                 
-                # Delete option for saved outfits
                 if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
                     st.session_state["saved_outfits"].pop(s_idx)
                     st.toast("Removed from Saved Closet!")
