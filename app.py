@@ -56,9 +56,9 @@ def get_trending_fashion_items(category: str) -> str:
 # ==========================================
 def call_gemini_with_tools(contents, api_key):
     """
-    Calls Gemini model with automatic function/tool calling enabled.
+    Calls Gemini model with automatic function/tool calling enabled using current models.
     """
-    models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash']
+    models_to_try = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']
     last_err = None
     
     for model_name in models_to_try:
