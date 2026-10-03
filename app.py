@@ -90,25 +90,25 @@ def call_gemini_with_tools(contents, api_key):
     raise last_err or Exception("All model endpoints busy. Please try again.")
 
 # ==========================================
-# VISUAL OUTFIT GENERATION (AI STUDIO DEV API COMPATIBLE)
+# VISUAL OUTFIT GENERATION (AI STUDIO API COMPATIBLE)
 # ==========================================
 def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key: str):
     """
-    Generates a full-body visual mockup photo while strictly preserving exact facial features,
-    body structure, and headgear shape/style while adapting headgear color.
+    Generates a full-body visual mockup photo while preserving exact model facial features,
+    body structure, and headgear style, while allowing headgear color customization.
     """
     prompt = f"""
     Full-body professional fashion lookbook studio portrait photo of the model wearing: {outfit_description}.
     
-    CRITICAL IDENTITY & HEADGEAR RULES:
-    1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, facial hair, facial shape, skin tone, height, or physical build.
-    2. PRESERVE HEADGEAR STYLE & SHAPE: Maintain the exact style, shape, silhouette, fold structure, and fitting of the subject's {headgear_style}.
-    3. DYNAMIC HEADGEAR COLOR: The color of the {headgear_style} MAY be altered or chosen to match and harmonize perfectly with the outfit palette (top, bottom, shoes).
+    CRITICAL FACIAL AND BODY CONSISTENCY RULES:
+    1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, skin tone, facial hair, eye shape, height, or body proportions. The subject must maintain their authentic face and physical structure.
+    2. PRESERVE HEADGEAR STYLE & SHAPE: Maintain the exact style, silhouette, structure, and wrapping/fitting of the subject's {headgear_style}.
+    3. DYNAMIC HEADGEAR COLOR: The color of the {headgear_style} MAY be altered or selected to harmonize and match perfectly with the rest of the outfit.
     
-    Lighting: High-end studio lighting, crisp 4K detail, realistic fabric textures.
+    Lighting: High-end studio fashion lighting, realistic fabric textures, crisp detail, 4K lookbook quality.
     """
 
-    # 1. Try legacy google-generativeai Imagen API (Works directly with AI Studio Keys)
+    # Primary Attempt: Direct Imagen via google-generativeai Developer API
     try:
         import google.generativeai as legacy_genai
         legacy_genai.configure(api_key=api_key)
@@ -123,7 +123,7 @@ def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key
     except Exception:
         pass
 
-    # 2. Direct REST Call / Fallback for AI Studio Image Generation
+    # Fallback Attempt: Multimodal content image generation
     try:
         if NEW_SDK:
             client = genai.Client(api_key=api_key)
