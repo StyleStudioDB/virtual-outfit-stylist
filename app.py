@@ -1,10 +1,11 @@
 import os
 import time
 import io
+import json
 import streamlit as st
 from PIL import Image
 
-# Import Google GenAI SDK safely
+# Import current Google GenAI SDK safely
 try:
     from google import genai
     from google.genai import types
@@ -14,21 +15,109 @@ except ModuleNotFoundError:
         import google.generativeai as genai
         NEW_SDK = False
     except ModuleNotFoundError:
-        st.error("Google GenAI SDK is not installed. Please check your requirements.txt file.")
+        st.error("Google GenAI SDK is not installed. Please add `google-genai` to your requirements.txt file.")
         st.stop()
 
 # Streamlit Page Setup
 st.set_page_config(page_title="AI Fashion Stylist & Virtual Try-On", layout="wide")
 
-# Initialize Persistent Session State
-if "model_photos" not in st.session_state:
-    st.session_state["model_photos"] = {}  # Store {'front': PIL.Image, 'left': ..., 'right': ..., 'back': ...}
-if "wardrobe_items" not in st.session_state:
-    st.session_state["wardrobe_items"] = []  # Store [{'image': PIL.Image, 'info': str}]
-if "saved_outfits" not in st.session_state:
-    st.session_state["saved_outfits"] = []
-if "generated_outfits" not in st.session_state:
-    st.session_state["generated_outfits"] = []
+# ==========================================
+# LOCAL DISK PERSISTENCE SETUP
+# ==========================================
+STORAGE_DIR = "saved_storage"
+MODEL_DIR = os.path.join(STORAGE_DIR, "models")
+WARDROBE_DIR = os.path.join(STORAGE_DIR, "wardrobe")
+WARDROBE_META = os.path.join(WARDROBE_DIR, "metadata.json")
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(WARDROBE_DIR, exist_ok=True)
+
+def load_persisted_data():
+    """Loads saved model photos and wardrobe inventory from local disk into session_state on page refresh."""
+    # 1. Load Model Angle Photos
+    if "model_photos" not in st.session_state:
+        st.session_state["model_photos"] = {}
+        for fname in os.listdir(MODEL_DIR):
+            if fname.lower().endswith(('.png', '.jpg', '.jpeg')):
+                angle_key = os.path.splitext(fname)[0]
+                img_path = os.path.join(MODEL_DIR, fname)
+                try:
+                    st.session_state["model_photos"][angle_key] = Image.open(img_path)
+                except Exception:
+                    pass
+
+    # 2. Load Wardrobe Inventory Items
+    if "wardrobe_items" not in st.session_state:
+        st.session_state["wardrobe_items"] = []
+        if os.path.exists(WARDROBE_META):
+            try:
+                with open(WARDROBE_META, "r") as f:
+                    meta = json.load(f)
+                for item in meta:
+                    img_path = os.path.join(WARDROBE_DIR, item["filename"])
+                    if os.path.exists(img_path):
+                        st.session_state["wardrobe_items"].append({
+                            "image": Image.open(img_path),
+                            "info": item["info"],
+                            "filename": item["filename"]
+                        })
+            except Exception:
+                pass
+
+    if "saved_outfits" not in st.session_state:
+        st.session_state["saved_outfits"] = []
+    if "generated_outfits" not in st.session_state:
+        st.session_state["generated_outfits"] = []
+
+load_persisted_data()
+
+def save_model_photo(angle_key, pil_image):
+    """Persists a model photo to disk and updates session state."""
+    st.session_state["model_photos"][angle_key] = pil_image
+    file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
+    pil_image.save(file_path, "PNG")
+
+def delete_model_photo(angle_key):
+    """Deletes a model photo from disk and state."""
+    if angle_key in st.session_state["model_photos"]:
+        del st.session_state["model_photos"][angle_key]
+    file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+def save_wardrobe_item(pil_image, info_str):
+    """Persists a wardrobe item and metadata to disk and state."""
+    filename = f"item_{int(time.time() * 1000)}.png"
+    file_path = os.path.join(WARDROBE_DIR, filename)
+    pil_image.save(file_path, "PNG")
+
+    item_data = {
+        "image": pil_image,
+        "info": info_str,
+        "filename": filename
+    }
+    st.session_state["wardrobe_items"].append(item_data)
+    _sync_wardrobe_metadata()
+
+def delete_wardrobe_item(index):
+    """Deletes a wardrobe item from disk and state."""
+    if 0 <= index < len(st.session_state["wardrobe_items"]):
+        item = st.session_state["wardrobe_items"].pop(index)
+        file_path = os.path.join(WARDROBE_DIR, item.get("filename", ""))
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        _sync_wardrobe_metadata()
+
+def _sync_wardrobe_metadata():
+    """Syncs wardrobe inventory metadata JSON file on disk."""
+    meta = []
+    for item in st.session_state["wardrobe_items"]:
+        meta.append({
+            "filename": item.get("filename"),
+            "info": item.get("info")
+        })
+    with open(WARDROBE_META, "w") as f:
+        json.dump(meta, f)
 
 st.title("👗 AI Fashion Stylist & Visual Concept Generator")
 
@@ -36,9 +125,6 @@ st.title("👗 AI Fashion Stylist & Visual Concept Generator")
 # TOOL / FUNCTION DEFINITIONS
 # ==========================================
 def get_trending_fashion_items(category: str) -> str:
-    """
-    Fetches live trending items and popular style matchings for a specific fashion category.
-    """
     trends = {
         "turban": "Trending pairings: Royal Blue, Emerald Green, and Charcoal Textured Blazers with Silk Pocket Squares.",
         "cap": "Trending pairings: Streetwear oversized hoodies, varsity jackets, and cargo pants.",
@@ -54,9 +140,9 @@ def get_trending_fashion_items(category: str) -> str:
 # ==========================================
 def call_gemini_with_tools(contents, api_key):
     """
-    Calls Gemini model with automatic function/tool calling enabled.
+    Calls standard active Gemini models using Google Developer API keys.
     """
-    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
     last_err = None
     
     for model_name in models_to_try:
@@ -87,28 +173,48 @@ def call_gemini_with_tools(contents, api_key):
                     continue
                 else:
                     raise e
-    raise last_err or Exception("All model endpoints busy. Please try again.")
+    raise last_err or Exception("All model endpoints busy or unreachable. Please verify your API key.")
 
 # ==========================================
 # VISUAL OUTFIT GENERATION (AI STUDIO API COMPATIBLE)
 # ==========================================
 def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key: str):
     """
-    Generates a full-body visual mockup photo while preserving exact model facial features,
-    body structure, and headgear style, while allowing headgear color customization.
+    Generates a full-body visual mockup photo while preserving subject model characteristics.
     """
     prompt = f"""
     Full-body professional fashion lookbook studio portrait photo of the model wearing: {outfit_description}.
     
     CRITICAL FACIAL AND BODY CONSISTENCY RULES:
-    1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, skin tone, facial hair, eye shape, height, or body proportions. The subject must maintain their authentic face and physical structure.
+    1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, skin tone, facial hair, eye shape, height, or body proportions.
     2. PRESERVE HEADGEAR STYLE & SHAPE: Maintain the exact style, silhouette, structure, and wrapping/fitting of the subject's {headgear_style}.
     3. DYNAMIC HEADGEAR COLOR: The color of the {headgear_style} MAY be altered or selected to harmonize and match perfectly with the rest of the outfit.
     
     Lighting: High-end studio fashion lighting, realistic fabric textures, crisp detail, 4K lookbook quality.
     """
 
-    # Primary Attempt: Direct Imagen via google-generativeai Developer API
+    # Model endpoints to attempt image generation for Developer API keys
+    image_models = ['gemini-2.5-flash-image', 'gemini-2.0-flash']
+    
+    if NEW_SDK:
+        client = genai.Client(api_key=api_key)
+        for m_name in image_models:
+            try:
+                response = client.models.generate_content(
+                    model=m_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["IMAGE", "TEXT"]
+                    )
+                )
+                if response.candidates and response.candidates[0].content.parts:
+                    for part in response.candidates[0].content.parts:
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            return Image.open(io.BytesIO(part.inline_data.data))
+            except Exception:
+                continue
+
+    # Fallback to legacy SDK if installed
     try:
         import google.generativeai as legacy_genai
         legacy_genai.configure(api_key=api_key)
@@ -122,24 +228,6 @@ def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key
             return result.images[0]
     except Exception:
         pass
-
-    # Fallback Attempt: Multimodal content image generation
-    try:
-        if NEW_SDK:
-            client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"]
-                )
-            )
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    return Image.open(io.BytesIO(part.inline_data.data))
-    except Exception as e:
-        st.warning(f"Could not generate visual preview image: {str(e)}")
-        return None
 
     return None
 
@@ -170,12 +258,13 @@ for angle in angles:
             st.caption(f"✓ {angle} Photo Saved")
         with col_del:
             if st.button("🗑️", key=f"del_model_{key_str}"):
-                del st.session_state["model_photos"][key_str]
+                delete_model_photo(key_str)
                 st.rerun()
     else:
         uploaded_file = st.sidebar.file_uploader(f"Upload {angle} view:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
         if uploaded_file:
-            st.session_state["model_photos"][key_str] = Image.open(uploaded_file)
+            img = Image.open(uploaded_file)
+            save_model_photo(key_str, img)
             st.rerun()
 
 st.sidebar.markdown("---")
@@ -203,7 +292,7 @@ with tab_generator:
             if k in st.session_state["model_photos"]:
                 st.image(st.session_state["model_photos"][k], use_container_width=True)
                 if st.button(f"Delete {angle}", key=f"main_del_model_{k}"):
-                    del st.session_state["model_photos"][k]
+                    delete_model_photo(k)
                     st.rerun()
             else:
                 st.info("Not uploaded")
@@ -215,7 +304,7 @@ with tab_generator:
         if not api_key:
             st.error("Please enter or configure your Google AI Studio API Key.")
         elif "front" not in st.session_state["model_photos"]:
-            st.error("Please at least upload the Front model photo before generating.")
+            st.error("Please upload at least the Front model photo before generating.")
         else:
             with st.spinner(f"Curating {batch_count} outfits and generating visual previews..."):
                 prompt_parts = []
@@ -308,10 +397,7 @@ with tab_wardrobe:
                     ]
                     try:
                         analysis = call_gemini_with_tools(cat_prompt, api_key)
-                        st.session_state["wardrobe_items"].append({
-                            "image": img,
-                            "info": analysis.strip()
-                        })
+                        save_wardrobe_item(img, analysis.strip())
                     except Exception as e:
                         st.error(f"Failed to analyze image: {str(e)}")
             st.rerun()
@@ -326,7 +412,7 @@ with tab_wardrobe:
                 st.image(item["image"], use_container_width=True)
                 st.caption(item["info"])
                 if st.button(f"Remove Item #{w_idx+1}", key=f"del_w_{w_idx}"):
-                    st.session_state["wardrobe_items"].pop(w_idx)
+                    delete_wardrobe_item(w_idx)
                     st.rerun()
     else:
         st.info("No wardrobe items added yet. Upload photos above to build your inventory.")
