@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 from PIL import Image
 
@@ -40,6 +41,41 @@ batch_count = st.sidebar.radio("Number of Outfits:", [5, 10])
 
 api_key = st.sidebar.text_input("Google AI Studio API Key:", type="password")
 
+def generate_outfits_with_fallback(prompt, api_key):
+    """
+    Tries gemini-3.8-flash first. If 503 capacity issues occur, 
+    retries and falls back to stable model endpoints.
+    """
+    models_to_try = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash']
+    
+    last_exception = None
+    for model_name in models_to_try:
+        for attempt in range(2):  # Retry up to twice per model
+            try:
+                if NEW_SDK:
+                    client = genai.Client(api_key=api_key)
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt
+                    )
+                    return response.text
+                else:
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content(prompt)
+                    return response.text
+            except Exception as e:
+                last_exception = e
+                err_msg = str(e)
+                # If unavailable or high demand (503), wait 1.5s and retry/fallback
+                if "503" in err_msg or "UNAVAILABLE" in err_msg or "HIGH_DEMAND" in err_msg:
+                    time.sleep(1.5)
+                    continue
+                else:
+                    raise e
+                    
+    raise last_exception or Exception("Service unavailable across endpoints. Please try again in a moment.")
+
 # Generation Logic
 if st.sidebar.button("✨ Generate Outfits", type="primary"):
     if not api_key:
@@ -55,19 +91,7 @@ if st.sidebar.button("✨ Generate Outfits", type="primary"):
             """
             
             try:
-                if NEW_SDK:
-                    client = genai.Client(api_key=api_key)
-                    response = client.models.generate_content(
-                        model='gemini-3.8-flash',
-                        contents=prompt
-                    )
-                    outfits_text = response.text
-                else:
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-3.8-flash')
-                    response = model.generate_content(prompt)
-                    outfits_text = response.text
-                    
+                outfits_text = generate_outfits_with_fallback(prompt, api_key)
                 st.session_state["generated_outfits"] = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
                 st.success("Outfits generated successfully!")
             except Exception as e:
@@ -96,7 +120,7 @@ if st.session_state["generated_outfits"]:
                         st.toast(f"Saved Outfit #{idx + 1}!")
 
             with col3:
-                if st.button(f"🗑️️ Delete", key=f"del_{idx}"):
+                if st.button(f"🗑️ Delete", key=f"del_{idx}"):
                     st.session_state["generated_outfits"].pop(idx)
                     st.rerun()
 
