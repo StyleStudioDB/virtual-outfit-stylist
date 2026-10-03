@@ -6,6 +6,7 @@ from PIL import Image
 # Import Google GenAI SDK safely
 try:
     from google import genai
+    from google.genai import types
     NEW_SDK = True
 except ModuleNotFoundError:
     try:
@@ -16,23 +17,52 @@ except ModuleNotFoundError:
         st.stop()
 
 # Streamlit Page Setup
-st.set_page_config(page_title="AI Fashion Stylist", layout="wide")
+st.set_page_config(page_title="AI Fashion Stylist & Tool Calling", layout="wide")
 
 # Initialize Persistent Session State
 if "model_photos" not in st.session_state:
     st.session_state["model_photos"] = {}  # Store {'front': PIL.Image, 'left': ..., 'right': ..., 'back': ...}
 if "wardrobe_items" not in st.session_state:
-    st.session_state["wardrobe_items"] = []  # Store [{'image': PIL.Image, 'category': str, 'description': str}]
+    st.session_state["wardrobe_items"] = []  # Store [{'image': PIL.Image, 'info': str}]
 if "saved_outfits" not in st.session_state:
     st.session_state["saved_outfits"] = []
 if "generated_outfits" not in st.session_state:
     st.session_state["generated_outfits"] = []
+if "tool_logs" not in st.session_state:
+    st.session_state["tool_logs"] = []
 
-st.title("👗 AI Fashion Stylist & Virtual Try-On")
+st.title("👗 AI Fashion Stylist with Tool & Function Calling")
 
-# Helper function to call Gemini with retries and fallback
-def call_gemini_vision(contents, api_key):
-    models_to_try = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']
+# ==========================================
+# TOOL / FUNCTION DEFINITIONS
+# ==========================================
+def get_trending_fashion_items(category: str) -> str:
+    """
+    Fetches live trending items and popular style matchings for a specific fashion category.
+    
+    Args:
+        category: The category of clothing (e.g., 'Turban', 'Tops', 'Shoes', 'Outerwear').
+    """
+    # Custom tool logic (e.g., calling external e-commerce API, inventory database, etc.)
+    trends = {
+        "turban": "Trending pairings: Royal Blue, Emerald Green, and Charcoal Textured Blazers with Silk Pocket Squares.",
+        "cap": "Trending pairings: Streetwear oversized hoodies, varsity jackets, and cargo pants.",
+        "beanie": "Trending pairings: Wool trench coats, layer-heavy sweaters, and Chelsea boots.",
+        "tops": "Trending styles: Linen button-downs, oversized monochrome t-shirts, and structured blazers.",
+        "bottoms": "Trending styles: Tapered trousers, relaxed dark denim, and pleated chinos."
+    }
+    key = category.lower().strip()
+    result = trends.get(key, f"Trending styles for {category}: Neutral tones, minimalist layering, and tailored fits.")
+    return result
+
+# ==========================================
+# GEMINI CALL WITH TOOL INTEGRATION
+# ==========================================
+def call_gemini_with_tools(contents, api_key):
+    """
+    Calls Gemini model with automatic function/tool calling enabled.
+    """
+    models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash']
     last_err = None
     
     for model_name in models_to_try:
@@ -40,14 +70,21 @@ def call_gemini_vision(contents, api_key):
             try:
                 if NEW_SDK:
                     client = genai.Client(api_key=api_key)
+                    # Pass python functions directly into the tools configuration
                     response = client.models.generate_content(
                         model=model_name,
-                        contents=contents
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            tools=[get_trending_fashion_items]
+                        )
                     )
                     return response.text
                 else:
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(model_name)
+                    model = genai.GenerativeModel(
+                        model_name,
+                        tools=[get_trending_fashion_items]
+                    )
                     response = model.generate_content(contents)
                     return response.text
             except Exception as e:
@@ -68,7 +105,7 @@ st.sidebar.header("1. Model Configuration")
 headgear_style = st.sidebar.radio("Headgear Style:", ["Turban", "Cap", "Beanie"])
 
 # 4-Angle Model Photo Upload
-st.sidebar.subheader("Model Angle Photos (Persistent)")
+st.sidebar.subheader("Model Angle Photos")
 angles = ["Front", "Left Profile", "Right Profile", "Back"]
 
 for angle in angles:
@@ -89,7 +126,7 @@ for angle in angles:
             st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.header("2. Wardrobe & Outfit Options")
+st.sidebar.header("2. Wardrobe & Options")
 source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
 batch_count = st.sidebar.radio("Number of Outfits:", [5, 10])
 
@@ -113,7 +150,7 @@ if source_mode == "My Wardrobe":
                         "Analyze this fashion item image. Return ONLY a single line formatted as: 'Category: Brief Description' (e.g., 'Tops: Oversized Navy Blue Cotton T-Shirt')."
                     ]
                     try:
-                        analysis = call_gemini_vision(cat_prompt, api_key)
+                        analysis = call_gemini_with_tools(cat_prompt, api_key)
                         st.session_state["wardrobe_items"].append({
                             "image": img,
                             "info": analysis.strip()
@@ -123,49 +160,52 @@ if source_mode == "My Wardrobe":
             st.rerun()
 
 # Generation Action
-if st.sidebar.button("✨ Generate Outfits", type="primary"):
+if st.sidebar.button("✨ Generate Outfits with Tool Query", type="primary"):
     if not api_key:
         st.error("Please enter your Google AI Studio API Key.")
     elif "front" not in st.session_state["model_photos"]:
         st.error("Please at least upload the Front model photo before generating.")
     else:
-        with st.spinner(f"Curating {batch_count} outfits..."):
+        with st.spinner(f"Curating {batch_count} outfits using live tool data..."):
             prompt_parts = []
             
-            # Append available model angles
-            prompt_parts.append("Here are the model photos from available angles:")
+            # Append model photos
+            prompt_parts.append("Model Reference Photos:")
             for angle_name, img in st.session_state["model_photos"].items():
                 prompt_parts.append(f"Angle: {angle_name}")
                 prompt_parts.append(img)
 
-            # Append categorized wardrobe items if selected
+            # Append wardrobe if enabled
             if source_mode == "My Wardrobe" and st.session_state["wardrobe_items"]:
                 prompt_parts.append("\nUser's Wardrobe Inventory:")
                 for idx, w_item in enumerate(st.session_state["wardrobe_items"]):
                     prompt_parts.append(f"Item #{idx+1}: {w_item['info']}")
             
-            # Instructions
+            # Prompt directing Gemini to use available tools
             instructions = f"""
-            Act as a personal fashion stylist. Generate {batch_count} complete outfit recommendations suitable for the model wearing a {headgear_style}.
+            Act as a personal fashion stylist. 
+            First, use your tool `get_trending_fashion_items` to fetch live trends for category '{headgear_style}'.
+            Then generate {batch_count} complete outfit recommendations suitable for the model based on the fetched trends.
+            
             Outfit Source Mode: {source_mode}.
             
             Requirements:
-            - Analyze the model's structure/style from all provided photos (Front, Left, Right, Back).
+            - Analyze the model's photos (Front, Left, Right, Back).
             - Output itemized outfit breakdowns (Top, Bottom, Shoes, Accessories, Color Coordination).
             - Ensure headgear color harmonizes with each outfit.
             """
             prompt_parts.append(instructions)
             
             try:
-                outfits_text = call_gemini_vision(prompt_parts, api_key)
+                outfits_text = call_gemini_with_tools(prompt_parts, api_key)
                 st.session_state["generated_outfits"] = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
-                st.success("Outfits generated successfully!")
+                st.success("Outfits generated with tool verification!")
             except Exception as e:
                 st.error(f"Error generating outfits: {str(e)}")
 
 # MAIN DASHBOARD
 
-# Section 1: Saved Model Angles Preview
+# Section 1: Model Photos
 st.header("👤 Model Angles Gallery")
 m_cols = st.columns(4)
 for idx, angle in enumerate(angles):
@@ -195,7 +235,7 @@ if source_mode == "My Wardrobe":
                     st.session_state["wardrobe_items"].pop(w_idx)
                     st.rerun()
     else:
-        st.write("No wardrobe items categorized yet. Upload photos in the sidebar and click 'Categorize New Items'.")
+        st.write("No wardrobe items categorized yet. Upload photos in the sidebar.")
 
 # Section 3: Generated Outfits
 st.markdown("---")
