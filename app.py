@@ -28,8 +28,6 @@ if "saved_outfits" not in st.session_state:
     st.session_state["saved_outfits"] = []
 if "generated_outfits" not in st.session_state:
     st.session_state["generated_outfits"] = []
-if "tool_logs" not in st.session_state:
-    st.session_state["tool_logs"] = []
 
 st.title("👗 AI Fashion Stylist with Tool & Function Calling")
 
@@ -43,7 +41,6 @@ def get_trending_fashion_items(category: str) -> str:
     Args:
         category: The category of clothing (e.g., 'Turban', 'Tops', 'Shoes', 'Outerwear').
     """
-    # Custom tool logic (e.g., calling external e-commerce API, inventory database, etc.)
     trends = {
         "turban": "Trending pairings: Royal Blue, Emerald Green, and Charcoal Textured Blazers with Silk Pocket Squares.",
         "cap": "Trending pairings: Streetwear oversized hoodies, varsity jackets, and cargo pants.",
@@ -52,8 +49,7 @@ def get_trending_fashion_items(category: str) -> str:
         "bottoms": "Trending styles: Tapered trousers, relaxed dark denim, and pleated chinos."
     }
     key = category.lower().strip()
-    result = trends.get(key, f"Trending styles for {category}: Neutral tones, minimalist layering, and tailored fits.")
-    return result
+    return trends.get(key, f"Trending styles for {category}: Neutral tones, minimalist layering, and tailored fits.")
 
 # ==========================================
 # GEMINI CALL WITH TOOL INTEGRATION
@@ -70,7 +66,6 @@ def call_gemini_with_tools(contents, api_key):
             try:
                 if NEW_SDK:
                     client = genai.Client(api_key=api_key)
-                    # Pass python functions directly into the tools configuration
                     response = client.models.generate_content(
                         model=model_name,
                         contents=contents,
@@ -96,9 +91,15 @@ def call_gemini_with_tools(contents, api_key):
                     raise e
     raise last_err or Exception("All model endpoints busy. Please try again.")
 
-# Sidebar Configuration
+# Sidebar Configuration - Reads automatically from Streamlit Secrets if set
 st.sidebar.header("🔑 API Settings")
-api_key = st.sidebar.text_input("Google AI Studio API Key:", type="password")
+default_key = st.secrets.get("GEMINI_API_KEY", "")
+api_key = st.sidebar.text_input(
+    "Google AI Studio API Key:", 
+    value=default_key, 
+    type="password",
+    help="Loaded automatically from Streamlit Secrets if configured."
+)
 
 st.sidebar.markdown("---")
 st.sidebar.header("1. Model Configuration")
@@ -162,26 +163,23 @@ if source_mode == "My Wardrobe":
 # Generation Action
 if st.sidebar.button("✨ Generate Outfits with Tool Query", type="primary"):
     if not api_key:
-        st.error("Please enter your Google AI Studio API Key.")
+        st.error("Please enter or configure your Google AI Studio API Key.")
     elif "front" not in st.session_state["model_photos"]:
         st.error("Please at least upload the Front model photo before generating.")
     else:
         with st.spinner(f"Curating {batch_count} outfits using live tool data..."):
             prompt_parts = []
             
-            # Append model photos
             prompt_parts.append("Model Reference Photos:")
             for angle_name, img in st.session_state["model_photos"].items():
                 prompt_parts.append(f"Angle: {angle_name}")
                 prompt_parts.append(img)
 
-            # Append wardrobe if enabled
             if source_mode == "My Wardrobe" and st.session_state["wardrobe_items"]:
                 prompt_parts.append("\nUser's Wardrobe Inventory:")
                 for idx, w_item in enumerate(st.session_state["wardrobe_items"]):
                     prompt_parts.append(f"Item #{idx+1}: {w_item['info']}")
             
-            # Prompt directing Gemini to use available tools
             instructions = f"""
             Act as a personal fashion stylist. 
             First, use your tool `get_trending_fashion_items` to fetch live trends for category '{headgear_style}'.
@@ -204,8 +202,6 @@ if st.sidebar.button("✨ Generate Outfits with Tool Query", type="primary"):
                 st.error(f"Error generating outfits: {str(e)}")
 
 # MAIN DASHBOARD
-
-# Section 1: Model Photos
 st.header("👤 Model Angles Gallery")
 m_cols = st.columns(4)
 for idx, angle in enumerate(angles):
@@ -220,7 +216,6 @@ for idx, angle in enumerate(angles):
         else:
             st.info("Not uploaded")
 
-# Section 2: Wardrobe Gallery
 if source_mode == "My Wardrobe":
     st.markdown("---")
     st.header("👔 Categorized Wardrobe")
@@ -237,7 +232,6 @@ if source_mode == "My Wardrobe":
     else:
         st.write("No wardrobe items categorized yet. Upload photos in the sidebar.")
 
-# Section 3: Generated Outfits
 st.markdown("---")
 st.header("✨ Curated Outfits")
 if st.session_state["generated_outfits"]:
@@ -256,7 +250,6 @@ if st.session_state["generated_outfits"]:
                     st.session_state["generated_outfits"].pop(idx)
                     st.rerun()
 
-# Section 4: Saved Closet
 st.markdown("---")
 st.header("🔒 Saved Closet")
 if st.session_state["saved_outfits"]:
