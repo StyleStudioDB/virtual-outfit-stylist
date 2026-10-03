@@ -5,7 +5,7 @@ import json
 import streamlit as st
 from PIL import Image
 
-# Import current Google GenAI SDK safely
+# Import Google GenAI SDK safely
 try:
     from google import genai
     from google.genai import types
@@ -34,7 +34,6 @@ os.makedirs(WARDROBE_DIR, exist_ok=True)
 
 def load_persisted_data():
     """Loads saved model photos and wardrobe inventory from local disk into session_state on page refresh."""
-    # 1. Load Model Angle Photos
     if "model_photos" not in st.session_state:
         st.session_state["model_photos"] = {}
         for fname in os.listdir(MODEL_DIR):
@@ -46,7 +45,6 @@ def load_persisted_data():
                 except Exception:
                     pass
 
-    # 2. Load Wardrobe Inventory Items
     if "wardrobe_items" not in st.session_state:
         st.session_state["wardrobe_items"] = []
         if os.path.exists(WARDROBE_META):
@@ -140,47 +138,43 @@ def get_trending_fashion_items(category: str) -> str:
 # ==========================================
 def call_gemini_with_tools(contents, api_key):
     """
-    Calls standard active Gemini models using Google Developer API keys.
+    Calls Gemini 3.5 Flash Lite via Google GenAI SDK.
     """
-    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash']
-    last_err = None
+    model_name = 'gemini-3.5-flash-lite'
     
-    for model_name in models_to_try:
-        for _ in range(2):
-            try:
-                if NEW_SDK:
-                    client = genai.Client(api_key=api_key)
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            tools=[get_trending_fashion_items]
-                        )
-                    )
-                    return response.text
-                else:
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(
-                        model_name,
+    for attempt in range(2):
+        try:
+            if NEW_SDK:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
                         tools=[get_trending_fashion_items]
                     )
-                    response = model.generate_content(contents)
-                    return response.text
-            except Exception as e:
-                last_err = e
-                if "503" in str(e) or "UNAVAILABLE" in str(e) or "404" in str(e):
-                    time.sleep(1.5)
-                    continue
-                else:
-                    raise e
-    raise last_err or Exception("All model endpoints busy or unreachable. Please verify your API key.")
+                )
+                return response.text
+            else:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(
+                    model_name,
+                    tools=[get_trending_fashion_items]
+                )
+                response = model.generate_content(contents)
+                return response.text
+        except Exception as e:
+            if attempt == 0 and ("503" in str(e) or "UNAVAILABLE" in str(e)):
+                time.sleep(1.5)
+                continue
+            else:
+                raise e
 
 # ==========================================
-# VISUAL OUTFIT GENERATION (AI STUDIO API COMPATIBLE)
+# VISUAL OUTFIT GENERATION
 # ==========================================
 def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key: str):
     """
-    Generates a full-body visual mockup photo while preserving subject model characteristics.
+    Generates a visual outfit preview photo using image output modality.
     """
     prompt = f"""
     Full-body professional fashion lookbook studio portrait photo of the model wearing: {outfit_description}.
@@ -193,41 +187,23 @@ def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key
     Lighting: High-end studio fashion lighting, realistic fabric textures, crisp detail, 4K lookbook quality.
     """
 
-    # Model endpoints to attempt image generation for Developer API keys
-    image_models = ['gemini-2.5-flash-image', 'gemini-2.0-flash']
-    
-    if NEW_SDK:
-        client = genai.Client(api_key=api_key)
-        for m_name in image_models:
-            try:
-                response = client.models.generate_content(
-                    model=m_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"]
-                    )
-                )
-                if response.candidates and response.candidates[0].content.parts:
-                    for part in response.candidates[0].content.parts:
-                        if hasattr(part, 'inline_data') and part.inline_data:
-                            return Image.open(io.BytesIO(part.inline_data.data))
-            except Exception:
-                continue
-
-    # Fallback to legacy SDK if installed
     try:
-        import google.generativeai as legacy_genai
-        legacy_genai.configure(api_key=api_key)
-        imagen_model = legacy_genai.GenerativeModel('imagen-3.0-generate-002')
-        result = imagen_model.generate_images(
-            prompt=prompt,
-            number_of_images=1,
-            aspect_ratio="3:4"
-        )
-        if hasattr(result, 'images') and result.images:
-            return result.images[0]
-    except Exception:
-        pass
+        if NEW_SDK:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model='gemini-3.5-flash-lite',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"]
+                )
+            )
+            if response.candidates and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, 'inline_data') and part.inline_data:
+                        return Image.open(io.BytesIO(part.inline_data.data))
+    except Exception as e:
+        st.warning(f"Could not generate visual preview image: {str(e)}")
+        return None
 
     return None
 
@@ -257,7 +233,7 @@ for angle in angles:
         with col_img:
             st.caption(f"✓ {angle} Photo Saved")
         with col_del:
-            if st.button("🗑️", key=f"del_model_{key_str}"):
+            if st.button("🗑️️", key=f"del_model_{key_str}"):
                 delete_model_photo(key_str)
                 st.rerun()
     else:
