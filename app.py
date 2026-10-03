@@ -32,7 +32,6 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(WARDROBE_DIR, exist_ok=True)
 
 def load_persisted_data():
-    """Loads saved model photos and wardrobe inventory from local disk into session_state on page refresh."""
     if "model_photos" not in st.session_state:
         st.session_state["model_photos"] = {}
         for fname in os.listdir(MODEL_DIR):
@@ -69,13 +68,11 @@ def load_persisted_data():
 load_persisted_data()
 
 def save_model_photo(angle_key, pil_image):
-    """Persists a model photo to disk and updates session state."""
     st.session_state["model_photos"][angle_key] = pil_image
     file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
     pil_image.save(file_path, "PNG")
 
 def delete_model_photo(angle_key):
-    """Deletes a model photo from disk and state."""
     if angle_key in st.session_state["model_photos"]:
         del st.session_state["model_photos"][angle_key]
     file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
@@ -83,7 +80,6 @@ def delete_model_photo(angle_key):
         os.remove(file_path)
 
 def save_wardrobe_item(pil_image, info_str):
-    """Persists a wardrobe item and metadata to disk and state."""
     filename = f"item_{int(time.time() * 1000)}.png"
     file_path = os.path.join(WARDROBE_DIR, filename)
     pil_image.save(file_path, "PNG")
@@ -97,7 +93,6 @@ def save_wardrobe_item(pil_image, info_str):
     _sync_wardrobe_metadata()
 
 def delete_wardrobe_item(index):
-    """Deletes a wardrobe item from disk and state."""
     if 0 <= index < len(st.session_state["wardrobe_items"]):
         item = st.session_state["wardrobe_items"].pop(index)
         file_path = os.path.join(WARDROBE_DIR, item.get("filename", ""))
@@ -106,7 +101,6 @@ def delete_wardrobe_item(index):
         _sync_wardrobe_metadata()
 
 def _sync_wardrobe_metadata():
-    """Syncs wardrobe inventory metadata JSON file on disk."""
     meta = []
     for item in st.session_state["wardrobe_items"]:
         meta.append({
@@ -131,7 +125,7 @@ def get_trending_fashion_items(category: str) -> str:
     return trends.get(key, f"Trending styles for {category}: Neutral tones, minimalist layering, and tailored fits.")
 
 # ==========================================
-# GEMINI CALL WITH TOOL & JSON STRUCTURE
+# GEMINI CALL 
 # ==========================================
 def call_gemini_outfits(contents, api_key):
     """Calls Gemini 3.5 Flash Lite to curate text outfits and prompts for Gemini Web App."""
@@ -142,7 +136,6 @@ def call_gemini_outfits(contents, api_key):
             if NEW_SDK:
                 client = genai.Client(api_key=api_key)
                 
-                # Optional: Applying permissive safety settings to prevent false positive blocks on model photos
                 safety_settings = [
                     types.SafetySetting(
                         category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
@@ -158,7 +151,6 @@ def call_gemini_outfits(contents, api_key):
                     model=model_name,
                     contents=contents,
                     config=types.GenerateContentConfig(
-                        tools=[get_trending_fashion_items],
                         response_mime_type="application/json",
                         safety_settings=safety_settings
                     )
@@ -166,11 +158,10 @@ def call_gemini_outfits(contents, api_key):
                 raw_text = response.text
             else:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(model_name, tools=[get_trending_fashion_items])
+                model = genai.GenerativeModel(model_name)
                 response = model.generate_content(contents)
                 raw_text = response.text
 
-            # Prevent the NoneType JSON error when Safety Filters trigger
             if not raw_text:
                 finish_reason = "Unknown"
                 if hasattr(response, 'candidates') and response.candidates:
@@ -182,7 +173,6 @@ def call_gemini_outfits(contents, api_key):
                     "This usually means a Safety Filter mistakenly blocked the model photos."
                 )
 
-            # Safely parse the text
             clean_text = raw_text.replace("```json", "").replace("```", "").strip()
             return json.loads(clean_text)
 
@@ -198,7 +188,6 @@ def call_gemini_outfits(contents, api_key):
 # ==========================================
 st.title("👗 AI Fashion Stylist & Gemini Chat Companion")
 
-# Sidebar Configuration - Auto Reads Secret
 st.sidebar.header("🔑 API Settings")
 default_key = st.secrets.get("GEMINI_API_KEY", "")
 api_key = st.sidebar.text_input(
@@ -212,7 +201,6 @@ st.sidebar.markdown("---")
 st.sidebar.header("1. Model Configuration")
 headgear_style = st.sidebar.radio("Headgear Style:", ["Turban", "Cap", "Beanie"])
 
-# 4-Angle Model Photo Upload
 st.sidebar.subheader("Model Angle Photos")
 angles = ["Front", "Left Profile", "Right Profile", "Back"]
 
@@ -239,7 +227,6 @@ st.sidebar.header("2. Generation Settings")
 source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
 batch_count = st.sidebar.radio("Number of Outfits:", [3, 5])
 
-# Workflow Instructions Card
 with st.expander("ℹ️ How to use this with Gemini Chat", expanded=False):
     st.markdown("""
     1. **Open Gemini Chat**: Go to [gemini.google.com](https://gemini.google.com) and open your dedicated model thread.
@@ -249,7 +236,6 @@ with st.expander("ℹ️ How to use this with Gemini Chat", expanded=False):
     5. **Upload & Save**: Download the picture from Gemini, upload it back to that outfit concept, and click **'💾 Save to Closet'**.
     """)
 
-# MAIN TABS LAYOUT
 tab_generator, tab_wardrobe, tab_closet = st.tabs([
     "✨ Outfit Generator", 
     "👔 Wardrobe", 
@@ -276,7 +262,6 @@ with tab_generator:
 
     st.markdown("---")
     
-    # Generation Trigger Button
     if st.button("✨ Generate Outfits + Gemini Prompts", type="primary", use_container_width=True):
         if not api_key:
             st.error("Please enter or configure your Google AI Studio API Key.")
@@ -296,10 +281,14 @@ with tab_generator:
                     for idx, w_item in enumerate(st.session_state["wardrobe_items"]):
                         prompt_parts.append(f"Item #{idx+1}: {w_item['info']}")
                 
+                # Fetch trends locally in Python to avoid API function call interruptions
+                fetched_trends = get_trending_fashion_items(headgear_style)
+                
                 instructions = f"""
                 Act as a personal fashion stylist. 
-                First, use `get_trending_fashion_items` to fetch live trends for '{headgear_style}'.
-                Then generate {batch_count} complete outfit recommendations suitable for the model based on the fetched trends.
+                Current live trends for '{headgear_style}': {fetched_trends}
+                
+                Generate {batch_count} complete outfit recommendations suitable for the model based on these trends.
                 
                 Outfit Source Mode: {source_mode}.
                 
