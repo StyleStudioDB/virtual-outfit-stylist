@@ -2,15 +2,19 @@ import os
 import streamlit as st
 from PIL import Image
 
-# Check for available Google GenAI SDK
+# Import standard library safely
 try:
     from google import genai
-    from google.genai import types
     NEW_SDK = True
-except ImportError:
-    import google.generativeai as genai
-    NEW_SDK = False
+except ModuleNotFoundError:
+    try:
+        import google.generativeai as genai
+        NEW_SDK = False
+    except ModuleNotFoundError:
+        st.error("Google GenAI SDK is not installed. Please check your requirements.txt file.")
+        st.stop()
 
+# Streamlit Page Setup
 st.set_page_config(page_title="AI Outfit Stylist", layout="wide")
 
 if "saved_outfits" not in st.session_state:
@@ -20,7 +24,7 @@ if "generated_outfits" not in st.session_state:
 
 st.title("👗 AI Fashion Stylist & Virtual Try-On")
 
-# Sidebar Configuration
+# Sidebar Controls
 st.sidebar.header("1. Model Configuration")
 model_type = st.sidebar.radio("Headgear Style:", ["Turban", "Cap", "Beanie"])
 
@@ -36,7 +40,7 @@ batch_count = st.sidebar.radio("Number of Outfits:", [5, 10])
 
 api_key = st.sidebar.text_input("Google AI Studio API Key:", type="password")
 
-# Generate Outfits Action
+# Generation Logic
 if st.sidebar.button("✨ Generate Outfits", type="primary"):
     if not api_key:
         st.error("Please enter your Google AI Studio API Key.")
@@ -47,26 +51,29 @@ if st.sidebar.button("✨ Generate Outfits", type="primary"):
             prompt = f"""
             Act as a personal fashion stylist. Generate {batch_count} complete outfits for a male model wearing a solid {model_type}.
             Outfit source mode: {source_mode}.
-            Provide itemized breakdown (Top, Bottom, Shoes, Accessories, Headgear color matching). Include online search keywords/links if shopping mode.
+            Provide itemized breakdown (Top, Bottom, Shoes, Accessories, Headgear color matching). Include online buy search keywords if shopping mode.
             """
             
-            if NEW_SDK:
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt
-                )
-                outfits_text = response.text
-            else:
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                response = model.generate_content(prompt)
-                outfits_text = response.text
-                
-            st.session_state["generated_outfits"] = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
-            st.success("Outfits generated!")
+            try:
+                if NEW_SDK:
+                    client = genai.Client(api_key=api_key)
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt
+                    )
+                    outfits_text = response.text
+                else:
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    response = model.generate_content(prompt)
+                    outfits_text = response.text
+                    
+                st.session_state["generated_outfits"] = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
+                st.success("Outfits generated successfully!")
+            except Exception as e:
+                st.error(f"Error generating outfits: {str(e)}")
 
-# Gallery & Interactions
+# Display Curated Outfits
 st.header("👔 Curated Outfits")
 
 if st.session_state["generated_outfits"]:
@@ -93,7 +100,7 @@ if st.session_state["generated_outfits"]:
                     st.session_state["generated_outfits"].pop(idx)
                     st.rerun()
 
-# Saved Closet
+# Saved Outfits Gallery
 st.markdown("---")
 st.header("🔒 Saved Closet")
 if st.session_state["saved_outfits"]:
