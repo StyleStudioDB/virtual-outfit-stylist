@@ -1,5 +1,6 @@
 import os
 import time
+import io
 import streamlit as st
 from PIL import Image
 
@@ -17,7 +18,7 @@ except ModuleNotFoundError:
         st.stop()
 
 # Streamlit Page Setup
-st.set_page_config(page_title="AI Fashion Stylist & Tool Calling", layout="wide")
+st.set_page_config(page_title="AI Fashion Stylist & Virtual Try-On", layout="wide")
 
 # Initialize Persistent Session State
 if "model_photos" not in st.session_state:
@@ -29,7 +30,7 @@ if "saved_outfits" not in st.session_state:
 if "generated_outfits" not in st.session_state:
     st.session_state["generated_outfits"] = []
 
-st.title("👗 AI Fashion Stylist with Tool & Function Calling")
+st.title("👗 AI Fashion Stylist & Visual Concept Generator")
 
 # ==========================================
 # TOOL / FUNCTION DEFINITIONS
@@ -37,9 +38,6 @@ st.title("👗 AI Fashion Stylist with Tool & Function Calling")
 def get_trending_fashion_items(category: str) -> str:
     """
     Fetches live trending items and popular style matchings for a specific fashion category.
-    
-    Args:
-        category: The category of clothing (e.g., 'Turban', 'Tops', 'Shoes', 'Outerwear').
     """
     trends = {
         "turban": "Trending pairings: Royal Blue, Emerald Green, and Charcoal Textured Blazers with Silk Pocket Squares.",
@@ -56,7 +54,7 @@ def get_trending_fashion_items(category: str) -> str:
 # ==========================================
 def call_gemini_with_tools(contents, api_key):
     """
-    Calls Gemini model with automatic function/tool calling enabled using current models.
+    Calls Gemini model with automatic function/tool calling enabled.
     """
     models_to_try = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']
     last_err = None
@@ -91,7 +89,35 @@ def call_gemini_with_tools(contents, api_key):
                     raise e
     raise last_err or Exception("All model endpoints busy. Please try again.")
 
-# Sidebar Configuration - Reads automatically from Streamlit Secrets if set
+# ==========================================
+# IMAGEN 3 VISUAL OUTFIT GENERATION
+# ==========================================
+def generate_visual_outfit(outfit_description: str, api_key: str):
+    """
+    Generates a full-body visual mockup photo of the outfit recommendation.
+    """
+    if not NEW_SDK:
+        return None
+    try:
+        client = genai.Client(api_key=api_key)
+        prompt = f"Full body professional fashion lookbook photograph. A male model wearing: {outfit_description}. Studio lighting, realistic textures, modern style."
+        
+        result = client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="3:4"
+            )
+        )
+        if result.generated_images:
+            image_bytes = result.generated_images[0].image.image_bytes
+            return Image.open(io.BytesIO(image_bytes))
+    except Exception as e:
+        st.warning(f"Could not generate visual preview image: {str(e)}")
+        return None
+
+# Sidebar Configuration - Auto Reads Secret
 st.sidebar.header("🔑 API Settings")
 default_key = st.secrets.get("GEMINI_API_KEY", "")
 api_key = st.sidebar.text_input(
@@ -129,7 +155,7 @@ for angle in angles:
 st.sidebar.markdown("---")
 st.sidebar.header("2. Wardrobe & Options")
 source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
-batch_count = st.sidebar.radio("Number of Outfits:", [5, 10])
+batch_count = st.sidebar.radio("Number of Outfits:", [3, 5])
 
 # Wardrobe Upload Section
 if source_mode == "My Wardrobe":
@@ -161,13 +187,13 @@ if source_mode == "My Wardrobe":
             st.rerun()
 
 # Generation Action
-if st.sidebar.button("✨ Generate Outfits with Tool Query", type="primary"):
+if st.sidebar.button("✨ Generate Outfits + Visual Previews", type="primary"):
     if not api_key:
         st.error("Please enter or configure your Google AI Studio API Key.")
     elif "front" not in st.session_state["model_photos"]:
         st.error("Please at least upload the Front model photo before generating.")
     else:
-        with st.spinner(f"Curating {batch_count} outfits using live tool data..."):
+        with st.spinner(f"Curating {batch_count} outfits and generating visual previews..."):
             prompt_parts = []
             
             prompt_parts.append("Model Reference Photos:")
@@ -196,8 +222,17 @@ if st.sidebar.button("✨ Generate Outfits with Tool Query", type="primary"):
             
             try:
                 outfits_text = call_gemini_with_tools(prompt_parts, api_key)
-                st.session_state["generated_outfits"] = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
-                st.success("Outfits generated with tool verification!")
+                parsed_outfits = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
+                
+                # Generate visual previews for each outfit
+                st.session_state["generated_outfits"] = []
+                for outfit in parsed_outfits:
+                    preview_img = generate_visual_outfit(outfit, api_key)
+                    st.session_state["generated_outfits"].append({
+                        "text": outfit,
+                        "image": preview_img
+                    })
+                st.success("Outfits and visual previews generated successfully!")
             except Exception as e:
                 st.error(f"Error generating outfits: {str(e)}")
 
@@ -233,17 +268,24 @@ if source_mode == "My Wardrobe":
         st.write("No wardrobe items categorized yet. Upload photos in the sidebar.")
 
 st.markdown("---")
-st.header("✨ Curated Outfits")
+st.header("✨ Curated Outfits & Visual Previews")
 if st.session_state["generated_outfits"]:
-    for idx, outfit_text in enumerate(st.session_state["generated_outfits"]):
+    for idx, outfit_data in enumerate(st.session_state["generated_outfits"]):
         with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
-            st.write(outfit_text)
+            col_txt, col_img = st.columns([2, 1])
+            with col_txt:
+                st.write(outfit_data["text"])
+            with col_img:
+                if outfit_data["image"]:
+                    st.image(outfit_data["image"], caption=f"Visual Preview #{idx+1}", use_container_width=True)
+                else:
+                    st.info("Visual preview generation pending or unavailable.")
             
             c1, c2 = st.columns([1, 1])
             with c1:
                 if st.button(f"💾 Save Outfit #{idx + 1}", key=f"save_{idx}"):
-                    if outfit_text not in st.session_state["saved_outfits"]:
-                        st.session_state["saved_outfits"].append(outfit_text)
+                    if outfit_data not in st.session_state["saved_outfits"]:
+                        st.session_state["saved_outfits"].append(outfit_data)
                         st.toast("Saved to Closet!")
             with c2:
                 if st.button(f"🗑️ Delete Outfit #{idx + 1}", key=f"del_out_{idx}"):
@@ -254,6 +296,11 @@ st.markdown("---")
 st.header("🔒 Saved Closet")
 if st.session_state["saved_outfits"]:
     for s_idx, item in enumerate(st.session_state["saved_outfits"]):
-        st.info(f"**Saved Look #{s_idx + 1}:**\n\n{item}")
+        col_stxt, col_simg = st.columns([2, 1])
+        with col_stxt:
+            st.info(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
+        with col_simg:
+            if item["image"]:
+                st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
 else:
     st.write("No saved outfits yet.")
