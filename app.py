@@ -2,7 +2,7 @@ import os
 import streamlit as st
 from PIL import Image
 
-# Import standard library safely
+# Import Google GenAI SDK safely
 try:
     from google import genai
     NEW_SDK = True
@@ -58,13 +58,13 @@ if st.sidebar.button("✨ Generate Outfits", type="primary"):
                 if NEW_SDK:
                     client = genai.Client(api_key=api_key)
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-3.8-flash',
                         contents=prompt
                     )
                     outfits_text = response.text
                 else:
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    model = genai.GenerativeModel('gemini-3.8-flash')
                     response = model.generate_content(prompt)
                     outfits_text = response.text
                     
@@ -96,7 +96,7 @@ if st.session_state["generated_outfits"]:
                         st.toast(f"Saved Outfit #{idx + 1}!")
 
             with col3:
-                if st.button(f"🗑️ Delete", key=f"del_{idx}"):
+                if st.button(f"🗑️️ Delete", key=f"del_{idx}"):
                     st.session_state["generated_outfits"].pop(idx)
                     st.rerun()
 
