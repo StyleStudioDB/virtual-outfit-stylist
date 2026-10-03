@@ -56,7 +56,7 @@ def call_gemini_with_tools(contents, api_key):
     """
     Calls Gemini model with automatic function/tool calling enabled.
     """
-    models_to_try = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']
+    models_to_try = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
     last_err = None
     
     for model_name in models_to_try:
@@ -82,7 +82,7 @@ def call_gemini_with_tools(contents, api_key):
                     return response.text
             except Exception as e:
                 last_err = e
-                if "503" in str(e) or "UNAVAILABLE" in str(e) or "HIGH_DEMAND" in str(e):
+                if "503" in str(e) or "UNAVAILABLE" in str(e) or "404" in str(e):
                     time.sleep(1.5)
                     continue
                 else:
@@ -90,64 +90,57 @@ def call_gemini_with_tools(contents, api_key):
     raise last_err or Exception("All model endpoints busy. Please try again.")
 
 # ==========================================
-# IMAGEN VISUAL OUTFIT GENERATION (AI Studio Key Compatible)
+# VISUAL OUTFIT GENERATION (AI STUDIO DEV API COMPATIBLE)
 # ==========================================
 def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key: str):
     """
-    Generates a full-body visual mockup photo using Google AI Studio compatible Imagen 3 models.
+    Generates a full-body visual mockup photo while strictly preserving exact facial features,
+    body structure, and headgear shape/style while adapting headgear color.
     """
     prompt = f"""
-    Full-body professional fashion lookbook studio portrait of the model wearing: {outfit_description}.
+    Full-body professional fashion lookbook studio portrait photo of the model wearing: {outfit_description}.
     
-    CRITICAL CONSISTENCY RULES:
-    1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, facial hair, facial shape, skin tone, height, or body structure.
+    CRITICAL IDENTITY & HEADGEAR RULES:
+    1. PRESERVE EXACT FACE & BODY STRUCTURE: Do NOT change facial features, facial hair, facial shape, skin tone, height, or physical build.
     2. PRESERVE HEADGEAR STYLE & SHAPE: Maintain the exact style, shape, silhouette, fold structure, and fitting of the subject's {headgear_style}.
     3. DYNAMIC HEADGEAR COLOR: The color of the {headgear_style} MAY be altered or chosen to match and harmonize perfectly with the outfit palette (top, bottom, shoes).
     
-    Lighting: Professional studio photography, realistic fabric textures, 4K lookbook output.
+    Lighting: High-end studio lighting, crisp 4K detail, realistic fabric textures.
     """
-    
+
+    # 1. Try legacy google-generativeai Imagen API (Works directly with AI Studio Keys)
+    try:
+        import google.generativeai as legacy_genai
+        legacy_genai.configure(api_key=api_key)
+        imagen_model = legacy_genai.GenerativeModel('imagen-3.0-generate-002')
+        result = imagen_model.generate_images(
+            prompt=prompt,
+            number_of_images=1,
+            aspect_ratio="3:4"
+        )
+        if hasattr(result, 'images') and result.images:
+            return result.images[0]
+    except Exception:
+        pass
+
+    # 2. Direct REST Call / Fallback for AI Studio Image Generation
     try:
         if NEW_SDK:
             client = genai.Client(api_key=api_key)
-            # Use Developer API compatible Imagen endpoint
-            result = client.models.generate_images(
-                model='imagen-3.0-generate-002',
-                prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="3:4",
-                    person_generation="ALLOW_ADULT"
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"]
                 )
             )
-            if result.generated_images:
-                image_bytes = result.generated_images[0].image.image_bytes
-                return Image.open(io.BytesIO(image_bytes))
-        else:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('imagen-3.0-generate-002')
-            result = model.generate_images(prompt=prompt)
-            if result and hasattr(result, 'images') and result.images:
-                return result.images[0]
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    return Image.open(io.BytesIO(part.inline_data.data))
     except Exception as e:
-        # Fallback to standard Image model if developer tier requires alternate call
-        try:
-            if NEW_SDK:
-                client = genai.Client(api_key=api_key)
-                result = client.models.generate_images(
-                    model='imagen-3.0-fast-generate-001',
-                    prompt=prompt,
-                    config=types.GenerateImagesConfig(
-                        number_of_images=1,
-                        aspect_ratio="3:4"
-                    )
-                )
-                if result.generated_images:
-                    image_bytes = result.generated_images[0].image.image_bytes
-                    return Image.open(io.BytesIO(image_bytes))
-        except Exception as fallback_err:
-            st.warning(f"Could not generate visual preview image: {str(fallback_err)}")
-            return None
+        st.warning(f"Could not generate visual preview image: {str(e)}")
+        return None
+
     return None
 
 # Sidebar Configuration - Auto Reads Secret
