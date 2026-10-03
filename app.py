@@ -1,104 +1,103 @@
 import os
-import Streamlit as st
+import streamlit as st
 from PIL import Image
 
-# Robust import check for Google GenAI library
+# Check for available Google GenAI SDK
 try:
-    From google import genai
-    From google.genai import types
+    from google import genai
+    from google.genai import types
     NEW_SDK = True
 except ImportError:
-    Import google.generativeai as genai
+    import google.generativeai as genai
     NEW_SDK = False
 
 st.set_page_config(page_title="AI Outfit Stylist", layout="wide")
 
-If "saved_outfits" not in st.session_state:
-    St.session_state["saved_outfits"] = []
-If "generated_outfits" not in st.session_state:
-    St.session_state["generated_outfits"] = []
+if "saved_outfits" not in st.session_state:
+    st.session_state["saved_outfits"] = []
+if "generated_outfits" not in st.session_state:
+    st.session_state["generated_outfits"] = []
 
 st.title("👗 AI Fashion Stylist & Virtual Try-On")
 
 # Sidebar Configuration
 st.sidebar.header("1. Model Configuration")
-Model_type = st.sidebar.radio("Headgear Style:", ["Turban", "Cap", "Beanie"])
+model_type = st.sidebar.radio("Headgear Style:", ["Turban", "Cap", "Beanie"])
 
-Uploaded_model = st.sidebar.file_uploader(
-    F"Upload base photo with {model_type}:", 
-    Type=["jpg", "jpeg", "png"]
+uploaded_model = st.sidebar.file_uploader(
+    f"Upload base photo with {model_type}:", 
+    type=["jpg", "jpeg", "png"]
 )
 
 st.sidebar.markdown("---")
 st.sidebar.header("2. Outfit Options")
-Source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
-Batch_count = st.sidebar.radio("Number of Outfits:", [5, 10])
+source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
+batch_count = st.sidebar.radio("Number of Outfits:", [5, 10])
 
-Api_key = st.sidebar.text_input("Google AI Studio API Key:", type="password")
+api_key = st.sidebar.text_input("Google AI Studio API Key:", type="password")
 
 # Generate Outfits Action
-If st.sidebar.button("✨ Generate Outfits", type="primary"):
-    If not api_key:
-        St.error("Please enter your Google AI Studio API Key.")
-    Elif not uploaded_model:
-        St.error(f"Please upload a photo wearing your {model_type}.")
-    Else:
-        With st.spinner(f"Curating {batch_count} outfits..."):
-            Prompt = f"""
+if st.sidebar.button("✨ Generate Outfits", type="primary"):
+    if not api_key:
+        st.error("Please enter your Google AI Studio API Key.")
+    elif not uploaded_model:
+        st.error(f"Please upload a photo wearing your {model_type}.")
+    else:
+        with st.spinner(f"Curating {batch_count} outfits..."):
+            prompt = f"""
             Act as a personal fashion stylist. Generate {batch_count} complete outfits for a male model wearing a solid {model_type}.
             Outfit source mode: {source_mode}.
-            Provide itemized breakdown (Top, Bottom, Shoes, Accessories, Headgear color matching). Include online buy search keywords if shopping mode.
+            Provide itemized breakdown (Top, Bottom, Shoes, Accessories, Headgear color matching). Include online search keywords/links if shopping mode.
             """
             
-            If NEW_SDK:
-                Client = genai.Client(api_key=api_key)
-                Response = client.models.generate_content(
-                    Model='gemini-2.5-flash',
-                    Contents=prompt
+            if NEW_SDK:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt
                 )
-                Outfits_text = response.text
-            Else:
-                Genai.configure(api_key=api_key)
-                Model = genai.GenerativeModel('gemini-1.5-flash')
-                Response = model.generate_content(prompt)
-                Outfits_text = response.text
+                outfits_text = response.text
+            else:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                response = model.generate_content(prompt)
+                outfits_text = response.text
                 
-            St.session_state["generated_outfits"] = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
-            St.success("Outfits generated!")
+            st.session_state["generated_outfits"] = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
+            st.success("Outfits generated!")
 
 # Gallery & Interactions
-St.header("👔 Curated Outfits")
+st.header("👔 Curated Outfits")
 
-If st.session_state["generated_outfits"]:
-    For idx, outfit_text in enumerate(st.session_state["generated_outfits"]):
-        With st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
-            St.write(outfit_text)
+if st.session_state["generated_outfits"]:
+    for idx, outfit_text in enumerate(st.session_state["generated_outfits"]):
+        with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
+            st.write(outfit_text)
             
-            Col1, col2, col3 = st.columns([1, 1, 2])
+            col1, col2, col3 = st.columns([1, 1, 2])
             
-            With col1:
-                If st.button(f"👁️ Preview #{idx + 1}", key=f"prev_{idx}"):
-                    St.info("Rendering preview on model...")
-                    # Display uploaded base image preview
-                    Image = Image.open(uploaded_model)
-                    St.image(image, caption=f"Model Try-On Preview #{idx + 1}")
+            with col1:
+                if st.button(f"👁️ Preview #{idx + 1}", key=f"prev_{idx}"):
+                    st.info("Rendering preview on model...")
+                    image = Image.open(uploaded_model)
+                    st.image(image, caption=f"Model Try-On Preview #{idx + 1}")
 
-            With col2:
-                If st.button(f"💾 Save", key=f"save_{idx}"):
-                    If outfit_text not in st.session_state["saved_outfits"]:
-                        St.session_state["saved_outfits"].append(outfit_text)
-                        St.toast(f"Saved Outfit #{idx + 1}!")
+            with col2:
+                if st.button(f"💾 Save", key=f"save_{idx}"):
+                    if outfit_text not in st.session_state["saved_outfits"]:
+                        st.session_state["saved_outfits"].append(outfit_text)
+                        st.toast(f"Saved Outfit #{idx + 1}!")
 
-            With col3:
-                If st.button(f"🗑️ Delete", key=f"del_{idx}"):
-                    St.session_state["generated_outfits"].pop(idx)
-                    St.rerun()
+            with col3:
+                if st.button(f"🗑️ Delete", key=f"del_{idx}"):
+                    st.session_state["generated_outfits"].pop(idx)
+                    st.rerun()
 
 # Saved Closet
-St.markdown("---")
-St.header("🔒 Saved Closet")
-If st.session_state["saved_outfits"]:
-    For s_idx, item in enumerate(st.session_state["saved_outfits"]):
-        St.info(f"**Saved Look #{s_idx + 1}:**\n\n{item}")
-Else:
-    St.write("No saved outfits yet.")
+st.markdown("---")
+st.header("🔒 Saved Closet")
+if st.session_state["saved_outfits"]:
+    for s_idx, item in enumerate(st.session_state["saved_outfits"]):
+        st.info(f"**Saved Look #{s_idx + 1}:**\n\n{item}")
+else:
+    st.write("No saved outfits yet.")
