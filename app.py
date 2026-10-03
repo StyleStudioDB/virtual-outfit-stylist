@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import uuid
 import streamlit as st
 from PIL import Image
 
@@ -115,20 +116,20 @@ def _sync_wardrobe_metadata():
 # ==========================================
 def get_trending_fashion_items(category: str) -> str:
     trends = {
-        "turban": "Trending pairings: Royal Blue, Emerald Green, and Charcoal Textured Blazers with Silk Pocket Squares.",
-        "cap": "Trending pairings: Streetwear oversized hoodies, varsity jackets, and cargo pants.",
-        "beanie": "Trending pairings: Wool trench coats, layer-heavy sweaters, and Chelsea boots.",
-        "tops": "Trending styles: Linen button-downs, oversized monochrome t-shirts, and structured blazers.",
-        "bottoms": "Trending styles: Tapered trousers, relaxed dark denim, and pleated chinos."
+        "turban": "Trending color pairings: Rich burgundy, mustard yellow, olive green, slate blue, and charcoal textured blazers with contrasting pocket squares.",
+        "cap": "Trending color pairings: Burnt orange streetwear hoodies, forest green varsity jackets, and neutral cargo pants.",
+        "beanie": "Trending color pairings: Warm white 'Cloud Dancer' trench coats, chocolate brown sweaters, and black Chelsea boots.",
+        "tops": "Trending styles: Butter tones, terracotta button-downs, oversized monochrome t-shirts, and structured blazers.",
+        "bottoms": "Trending styles: Tapered trousers, relaxed dark denim, and pleated earthy chinos."
     }
     key = category.lower().strip()
-    return trends.get(key, f"Trending styles for {category}: Neutral tones, minimalist layering, and tailored fits.")
+    return trends.get(key, f"Trending styles for {category}: Vibrant accent colors, minimalist layering, and tailored fits.")
 
 # ==========================================
 # GEMINI CALL 
 # ==========================================
 def call_gemini_outfits(contents, api_key):
-    """Calls Gemini 3.5 Flash Lite to curate text outfits and prompts for Gemini Web App."""
+    """Calls Gemini 3.5 Flash Lite with maximum temperature and dynamic seed for diverse outfits."""
     model_name = 'gemini-3.5-flash-lite'
     
     for attempt in range(2):
@@ -152,13 +153,17 @@ def call_gemini_outfits(contents, api_key):
                     contents=contents,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
-                        safety_settings=safety_settings
+                        safety_settings=safety_settings,
+                        temperature=0.95  # Maximum creativity & color variance
                     )
                 )
                 raw_text = response.text
             else:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(model_name)
+                model = genai.GenerativeModel(
+                    model_name,
+                    generation_config={"temperature": 0.95}
+                )
                 response = model.generate_content(contents)
                 raw_text = response.text
 
@@ -268,9 +273,13 @@ with tab_generator:
         elif "front" not in st.session_state["model_photos"]:
             st.error("Please upload at least the Front model photo before generating.")
         else:
-            with st.spinner(f"Curating {batch_count} outfits and building Gemini Chat prompts..."):
+            with st.spinner(f"Curating {batch_count} brand-new diverse outfits with shopping links..."):
                 prompt_parts = []
                 
+                # Add unique random salt to force completely fresh output every click
+                unique_session_salt = f"Session-Seed-{uuid.uuid4().hex[:8]}-{time.time()}"
+                prompt_parts.append(f"System Variation Salt: {unique_session_salt}")
+
                 prompt_parts.append("Model Reference Photos:")
                 for angle_name, img in st.session_state["model_photos"].items():
                     prompt_parts.append(f"Angle: {angle_name}")
@@ -281,21 +290,24 @@ with tab_generator:
                     for idx, w_item in enumerate(st.session_state["wardrobe_items"]):
                         prompt_parts.append(f"Item #{idx+1}: {w_item['info']}")
                 
-                # Fetch trends locally in Python to avoid API function call interruptions
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
                 instructions = f"""
-                Act as a personal fashion stylist. 
-                Current live trends for '{headgear_style}': {fetched_trends}
+                Act as a bold, avant-garde personal fashion stylist. 
+                Current live trends & color palettes for '{headgear_style}': {fetched_trends}
                 
-                Generate {batch_count} complete outfit recommendations suitable for the model based on these trends.
+                CRITICAL INSTRUCTIONS FOR VARIETY:
+                1. Generate {batch_count} completely fresh, unique, and experimental outfit recommendations. Avoid standard boring looks.
+                2. Vary the color schemes drastically across outfits (e.g. use bold jewel tones, earthy terracotta, warm mustard, olive, burgundy, slate blue, and warm whites). Ensure no two outfits share the same primary color scheme.
                 
+                SHOPPING & LINKS REQUIREMENT:
                 Outfit Source Mode: {source_mode}.
+                - If Outfit Source Mode is 'Online Shopping (Amazon/Web)', you MUST include direct clickable Markdown shopping links (using real retailers like Amazon, Abercrombie, ASOS, Buck Mason, or Google Shopping search URLs) for each clothing item or accessory in the breakdown so the user can click and buy them directly.
                 
                 Return JSON format with a key "outfits", where each item is an object:
                 {{
-                    "description": "Itemized breakdown (Top, Bottom, Shoes, Accessories, Color Coordination)",
-                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this outfit, strictly keeping the exact '{headgear_style}' style but harmonizing its color."
+                    "description": "Itemized breakdown with bold color descriptions and clickable Markdown purchase links/search URLs for each piece (Top, Bottom, Shoes, Accessories)",
+                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this specific colored outfit, strictly keeping the exact '{headgear_style}' style in a matching or complementary color."
                 }}
                 """
                 prompt_parts.append(instructions)
@@ -311,7 +323,7 @@ with tab_generator:
                             "prompt": item.get("gemini_chat_prompt", ""),
                             "image": None
                         })
-                    st.success("Outfits and Gemini Chat prompts generated successfully!")
+                    st.success("New unique outfits and shopping links generated successfully!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
@@ -322,7 +334,7 @@ with tab_generator:
                 col_txt, col_img = st.columns([2, 1])
                 
                 with col_txt:
-                    st.markdown(f"### Look Breakdown\n{outfit_data['text']}")
+                    st.markdown(f"### Look Breakdown & Links\n{outfit_data['text']}")
                     st.markdown("---")
                     st.markdown("**Copy this prompt to your Gemini Chat:**")
                     st.code(outfit_data["prompt"], language="text")
