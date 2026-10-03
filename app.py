@@ -134,11 +134,11 @@ def get_trending_fashion_items(category: str) -> str:
     return trends.get(key, f"Trending styles for {category}: Neutral tones, minimalist layering, and tailored fits.")
 
 # ==========================================
-# GEMINI CALL WITH TOOL INTEGRATION
+# GEMINI CALL WITH TOOL & JSON STRUCTURE
 # ==========================================
-def call_gemini_with_tools(contents, api_key):
+def call_gemini_outfits(contents, api_key):
     """
-    Calls Gemini 3.5 Flash Lite via Google GenAI SDK.
+    Calls Gemini 3.5 Flash Lite to return structured JSON outfits.
     """
     model_name = 'gemini-3.5-flash-lite'
     
@@ -150,10 +150,11 @@ def call_gemini_with_tools(contents, api_key):
                     model=model_name,
                     contents=contents,
                     config=types.GenerateContentConfig(
-                        tools=[get_trending_fashion_items]
+                        tools=[get_trending_fashion_items],
+                        response_mime_type="application/json"
                     )
                 )
-                return response.text
+                return json.loads(response.text)
             else:
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(
@@ -161,7 +162,9 @@ def call_gemini_with_tools(contents, api_key):
                     tools=[get_trending_fashion_items]
                 )
                 response = model.generate_content(contents)
-                return response.text
+                # Fallback JSON clean up
+                clean_text = response.text.replace("```json", "").replace("```", "").strip()
+                return json.loads(clean_text)
         except Exception as e:
             if attempt == 0 and ("503" in str(e) or "UNAVAILABLE" in str(e)):
                 time.sleep(1.5)
@@ -170,11 +173,11 @@ def call_gemini_with_tools(contents, api_key):
                 raise e
 
 # ==========================================
-# VISUAL OUTFIT GENERATION
+# VISUAL OUTFIT GENERATION VIA IMAGEN
 # ==========================================
 def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key: str):
     """
-    Generates a visual outfit preview photo using image output modality.
+    Generates a visual outfit preview photo using Imagen 3.
     """
     prompt = f"""
     Full-body professional fashion lookbook studio portrait photo of the model wearing: {outfit_description}.
@@ -190,17 +193,17 @@ def generate_visual_outfit(outfit_description: str, headgear_style: str, api_key
     try:
         if NEW_SDK:
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model='gemini-3.5-flash-lite',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"]
+            result = client.models.generate_images(
+                model='imagen-3.0-generate-002',
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type="image/png",
+                    aspect_ratio="3:4"
                 )
             )
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, 'inline_data') and part.inline_data:
-                        return Image.open(io.BytesIO(part.inline_data.data))
+            for generated_image in result.generated_images:
+                return Image.open(io.BytesIO(generated_image.image.image_bytes))
     except Exception as e:
         st.warning(f"Could not generate visual preview image: {str(e)}")
         return None
@@ -233,7 +236,7 @@ for angle in angles:
         with col_img:
             st.caption(f"✓ {angle} Photo Saved")
         with col_del:
-            if st.button("🗑️️", key=f"del_model_{key_str}"):
+            if st.button("🗑️", key=f"del_model_{key_str}"):
                 delete_model_photo(key_str)
                 st.rerun()
     else:
@@ -302,16 +305,15 @@ with tab_generator:
                 
                 Outfit Source Mode: {source_mode}.
                 
-                Requirements:
-                - Analyze the model's photos (Front, Left, Right, Back).
-                - Output itemized outfit breakdowns (Top, Bottom, Shoes, Accessories, Color Coordination).
-                - Ensure headgear color harmonizes with each outfit without altering its style or shape.
+                Return the response as a JSON object containing a single key "outfits" which is a list of strings.
+                Each string must represent ONE complete outfit concept formatted with clear titles and bullet points for Top, Bottom, Shoes, Accessories, and Color Coordination.
+                Do NOT include introductory conversational text in the outfit strings.
                 """
                 prompt_parts.append(instructions)
                 
                 try:
-                    outfits_text = call_gemini_with_tools(prompt_parts, api_key)
-                    parsed_outfits = [o.strip() for o in outfits_text.split("\n\n") if o.strip()]
+                    outfit_json = call_gemini_outfits(prompt_parts, api_key)
+                    parsed_outfits = outfit_json.get("outfits", [])
                     
                     st.session_state["generated_outfits"] = []
                     for outfit in parsed_outfits:
@@ -330,7 +332,7 @@ with tab_generator:
             with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
                 col_txt, col_img = st.columns([2, 1])
                 with col_txt:
-                    st.write(outfit_data["text"])
+                    st.markdown(outfit_data["text"])
                 with col_img:
                     if outfit_data["image"]:
                         st.image(outfit_data["image"], caption=f"Visual Preview #{idx+1}", use_container_width=True)
@@ -372,8 +374,16 @@ with tab_wardrobe:
                         "Analyze this fashion item image. Return ONLY a single line formatted as: 'Category: Brief Description' (e.g., 'Tops: Oversized Navy Blue Cotton T-Shirt')."
                     ]
                     try:
-                        analysis = call_gemini_with_tools(cat_prompt, api_key)
-                        save_wardrobe_item(img, analysis.strip())
+                        if NEW_SDK:
+                            client = genai.Client(api_key=api_key)
+                            resp = client.models.generate_content(model='gemini-3.5-flash-lite', contents=cat_prompt)
+                            analysis_text = resp.text
+                        else:
+                            genai.configure(api_key=api_key)
+                            m = genai.GenerativeModel('gemini-3.5-flash-lite')
+                            resp = m.generate_content(cat_prompt)
+                            analysis_text = resp.text
+                        save_wardrobe_item(img, analysis_text.strip())
                     except Exception as e:
                         st.error(f"Failed to analyze image: {str(e)}")
             st.rerun()
@@ -403,7 +413,7 @@ with tab_closet:
             with st.container():
                 col_stxt, col_simg = st.columns([2, 1])
                 with col_stxt:
-                    st.info(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
+                    st.markdown(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
                 with col_simg:
                     if item.get("image"):
                         st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
