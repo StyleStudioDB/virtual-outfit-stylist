@@ -27,12 +27,20 @@ st.set_page_config(page_title="AI Fashion Stylist & Gemini Chat Companion", layo
 STORAGE_DIR = "saved_storage"
 MODEL_DIR = os.path.join(STORAGE_DIR, "models")
 WARDROBE_DIR = os.path.join(STORAGE_DIR, "wardrobe")
-WARDROBE_META = os.path.join(WARDROBE_DIR, "metadata.json")
+OUTFITS_DIR = os.path.join(STORAGE_DIR, "outfits")
+GENERATED_DIR = os.path.join(STORAGE_DIR, "generated")
 
-os.makedirs(MODEL_DIR, exist_ok=True)
-os.makedirs(WARDROBE_DIR, exist_ok=True)
+WARDROBE_META = os.path.join(WARDROBE_DIR, "metadata.json")
+SAVED_OUTFITS_META = os.path.join(OUTFITS_DIR, "metadata.json")
+GENERATED_OUTFITS_META = os.path.join(GENERATED_DIR, "metadata.json")
+
+for d in [MODEL_DIR, WARDROBE_DIR, OUTFITS_DIR, GENERATED_DIR]:
+    os.makedirs(d, exist_ok=True)
 
 def load_persisted_data():
+    """Fully restores model photos, wardrobe, generated outfits, and saved outfits from disk on refresh."""
+    
+    # 1. Load Model Angle Photos
     if "model_photos" not in st.session_state:
         st.session_state["model_photos"] = {}
         for fname in os.listdir(MODEL_DIR):
@@ -44,6 +52,7 @@ def load_persisted_data():
                 except Exception:
                     pass
 
+    # 2. Load Wardrobe Inventory
     if "wardrobe_items" not in st.session_state:
         st.session_state["wardrobe_items"] = []
         if os.path.exists(WARDROBE_META):
@@ -61,54 +70,157 @@ def load_persisted_data():
             except Exception:
                 pass
 
-    if "saved_outfits" not in st.session_state:
-        st.session_state["saved_outfits"] = []
+    # 3. Load Generated Outfits
     if "generated_outfits" not in st.session_state:
         st.session_state["generated_outfits"] = []
+        if os.path.exists(GENERATED_OUTFITS_META):
+            try:
+                with open(GENERATED_OUTFITS_META, "r") as f:
+                    meta = json.load(f)
+                for item in meta:
+                    img = None
+                    if item.get("image_filename"):
+                        img_path = os.path.join(GENERATED_DIR, item["image_filename"])
+                        if os.path.exists(img_path):
+                            img = Image.open(img_path)
+                    st.session_state["generated_outfits"].append({
+                        "id": item.get("id", str(uuid.uuid4())),
+                        "text": item["text"],
+                        "prompt": item["prompt"],
+                        "image": img,
+                        "image_filename": item.get("image_filename")
+                    })
+            except Exception:
+                pass
+
+    # 4. Load Saved Closet Outfits
+    if "saved_outfits" not in st.session_state:
+        st.session_state["saved_outfits"] = []
+        if os.path.exists(SAVED_OUTFITS_META):
+            try:
+                with open(SAVED_OUTFITS_META, "r") as f:
+                    meta = json.load(f)
+                for item in meta:
+                    img = None
+                    if item.get("image_filename"):
+                        img_path = os.path.join(OUTFITS_DIR, item["image_filename"])
+                        if os.path.exists(img_path):
+                            img = Image.open(img_path)
+                    st.session_state["saved_outfits"].append({
+                        "id": item.get("id", str(uuid.uuid4())),
+                        "text": item["text"],
+                        "prompt": item["prompt"],
+                        "image": img,
+                        "image_filename": item.get("image_filename")
+                    })
+            except Exception:
+                pass
 
 load_persisted_data()
 
-def save_model_photo(angle_key, pil_image):
+# ==========================================
+# STORAGE HELPER FUNCTIONS
+# ==========================================
+def save_model_photo_disk(angle_key, pil_image):
     st.session_state["model_photos"][angle_key] = pil_image
     file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
     pil_image.save(file_path, "PNG")
 
-def delete_model_photo(angle_key):
+def delete_model_photo_disk(angle_key):
     if angle_key in st.session_state["model_photos"]:
         del st.session_state["model_photos"][angle_key]
     file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
     if os.path.exists(file_path):
         os.remove(file_path)
 
-def save_wardrobe_item(pil_image, info_str):
+def save_wardrobe_item_disk(pil_image, info_str):
     filename = f"item_{int(time.time() * 1000)}.png"
     file_path = os.path.join(WARDROBE_DIR, filename)
     pil_image.save(file_path, "PNG")
 
-    item_data = {
+    st.session_state["wardrobe_items"].append({
         "image": pil_image,
         "info": info_str,
         "filename": filename
-    }
-    st.session_state["wardrobe_items"].append(item_data)
-    _sync_wardrobe_metadata()
+    })
+    _sync_metadata(WARDROBE_META, st.session_state["wardrobe_items"])
 
-def delete_wardrobe_item(index):
+def delete_wardrobe_item_disk(index):
     if 0 <= index < len(st.session_state["wardrobe_items"]):
         item = st.session_state["wardrobe_items"].pop(index)
         file_path = os.path.join(WARDROBE_DIR, item.get("filename", ""))
         if os.path.exists(file_path):
             os.remove(file_path)
-        _sync_wardrobe_metadata()
+        _sync_metadata(WARDROBE_META, st.session_state["wardrobe_items"])
 
-def _sync_wardrobe_metadata():
+def save_generated_outfit_image_disk(idx, pil_image):
+    if 0 <= idx < len(st.session_state["generated_outfits"]):
+        outfit = st.session_state["generated_outfits"][idx]
+        filename = f"gen_{int(time.time() * 1000)}.png"
+        file_path = os.path.join(GENERATED_DIR, filename)
+        pil_image.save(file_path, "PNG")
+        
+        if outfit.get("image_filename"):
+            old_path = os.path.join(GENERATED_DIR, outfit["image_filename"])
+            if os.path.exists(old_path):
+                os.remove(old_path)
+                
+        outfit["image"] = pil_image
+        outfit["image_filename"] = filename
+        _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+
+def delete_generated_outfit_disk(idx):
+    if 0 <= idx < len(st.session_state["generated_outfits"]):
+        item = st.session_state["generated_outfits"].pop(idx)
+        if item.get("image_filename"):
+            path = os.path.join(GENERATED_DIR, item["image_filename"])
+            if os.path.exists(path):
+                os.remove(path)
+        _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+
+def save_to_closet_disk(outfit_data):
+    img_filename = None
+    if outfit_data.get("image"):
+        img_filename = f"closet_{int(time.time() * 1000)}.png"
+        path = os.path.join(OUTFITS_DIR, img_filename)
+        outfit_data["image"].save(path, "PNG")
+        
+    saved_item = {
+        "id": outfit_data.get("id", str(uuid.uuid4())),
+        "text": outfit_data["text"],
+        "prompt": outfit_data["prompt"],
+        "image": outfit_data.get("image"),
+        "image_filename": img_filename
+    }
+    
+    if not any(o.get("id") == saved_item["id"] for o in st.session_state["saved_outfits"]):
+        st.session_state["saved_outfits"].append(saved_item)
+        _sync_outfits_metadata(SAVED_OUTFITS_META, st.session_state["saved_outfits"])
+
+def delete_saved_closet_disk(idx):
+    if 0 <= idx < len(st.session_state["saved_outfits"]):
+        item = st.session_state["saved_outfits"].pop(idx)
+        if item.get("image_filename"):
+            path = os.path.join(OUTFITS_DIR, item["image_filename"])
+            if os.path.exists(path):
+                os.remove(path)
+        _sync_outfits_metadata(SAVED_OUTFITS_META, st.session_state["saved_outfits"])
+
+def _sync_metadata(meta_path, items_list):
+    meta = [{"info": item.get("info"), "filename": item.get("filename")} for item in items_list]
+    with open(meta_path, "w") as f:
+        json.dump(meta, f)
+
+def _sync_outfits_metadata(meta_path, outfits_list):
     meta = []
-    for item in st.session_state["wardrobe_items"]:
+    for item in outfits_list:
         meta.append({
-            "filename": item.get("filename"),
-            "info": item.get("info")
+            "id": item.get("id", str(uuid.uuid4())),
+            "text": item.get("text"),
+            "prompt": item.get("prompt"),
+            "image_filename": item.get("image_filename")
         })
-    with open(WARDROBE_META, "w") as f:
+    with open(meta_path, "w") as f:
         json.dump(meta, f)
 
 # ==========================================
@@ -129,25 +241,16 @@ def get_trending_fashion_items(category: str) -> str:
 # GEMINI CALL 
 # ==========================================
 def call_gemini_outfits(contents, api_key):
-    """Calls Gemini 3.5 Flash Lite with maximum temperature and dynamic seed for diverse outfits."""
     model_name = 'gemini-3.5-flash-lite'
     
     for attempt in range(2):
         try:
             if NEW_SDK:
                 client = genai.Client(api_key=api_key)
-                
                 safety_settings = [
-                    types.SafetySetting(
-                        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                        threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH
-                    ),
-                    types.SafetySetting(
-                        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                        threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH
-                    )
+                    types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH),
+                    types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH)
                 ]
-                
                 response = client.models.generate_content(
                     model=model_name,
                     contents=contents,
@@ -160,10 +263,7 @@ def call_gemini_outfits(contents, api_key):
                 raw_text = response.text
             else:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(
-                    model_name,
-                    generation_config={"temperature": 0.95}
-                )
+                model = genai.GenerativeModel(model_name, generation_config={"temperature": 0.95})
                 response = model.generate_content(contents)
                 raw_text = response.text
 
@@ -172,11 +272,7 @@ def call_gemini_outfits(contents, api_key):
                 if hasattr(response, 'candidates') and response.candidates:
                     if hasattr(response.candidates[0], 'finish_reason'):
                         finish_reason = str(response.candidates[0].finish_reason)
-                
-                raise ValueError(
-                    f"API returned an empty response (Finish Reason: {finish_reason}). "
-                    "This usually means a Safety Filter mistakenly blocked the model photos."
-                )
+                raise ValueError(f"API returned an empty response (Finish Reason: {finish_reason}).")
 
             clean_text = raw_text.replace("```json", "").replace("```", "").strip()
             return json.loads(clean_text)
@@ -218,13 +314,13 @@ for angle in angles:
             st.caption(f"✓ {angle} Photo Saved")
         with col_del:
             if st.button("🗑️", key=f"del_model_{key_str}"):
-                delete_model_photo(key_str)
+                delete_model_photo_disk(key_str)
                 st.rerun()
     else:
         uploaded_file = st.sidebar.file_uploader(f"Upload {angle} view:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
         if uploaded_file:
             img = Image.open(uploaded_file)
-            save_model_photo(key_str, img)
+            save_model_photo_disk(key_str, img)
             st.rerun()
 
 st.sidebar.markdown("---")
@@ -232,7 +328,6 @@ st.sidebar.header("2. Generation Settings")
 source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
 batch_count = st.sidebar.radio("Number of Outfits:", [3, 5])
 
-# NEW: Weather & Vibe Configuration Options
 st.sidebar.markdown("---")
 st.sidebar.header("🌡️ Temperature / Weather")
 weather_range = st.sidebar.radio(
@@ -277,7 +372,7 @@ with tab_generator:
             if k in st.session_state["model_photos"]:
                 st.image(st.session_state["model_photos"][k], use_container_width=True)
                 if st.button(f"Delete {angle}", key=f"main_del_model_{k}"):
-                    delete_model_photo(k)
+                    delete_model_photo_disk(k)
                     st.rerun()
             else:
                 st.info("Not uploaded")
@@ -292,8 +387,6 @@ with tab_generator:
         else:
             with st.spinner(f"Curating {batch_count} weather-optimized outfits for {weather_range} with a {outfit_vibe} vibe..."):
                 prompt_parts = []
-                
-                # Add unique random salt to force completely fresh output every click
                 unique_session_salt = f"Session-Seed-{uuid.uuid4().hex[:8]}-{time.time()}"
                 prompt_parts.append(f"System Variation Salt: {unique_session_salt}")
 
@@ -314,21 +407,26 @@ with tab_generator:
                 Current live trends & color palettes for '{headgear_style}': {fetched_trends}
                 
                 ENVIRONMENTAL & STYLE CONSTRAINTS:
-                - Weather / Temperature Context: {weather_range}. Ensure layering, fabric choices (e.g., heavy wools for cold vs. breathable linen/cottons for heat), and warmth ratings strictly match this temperature range.
+                - Weather / Temperature Context: {weather_range}. Ensure layering, fabric choices, and warmth ratings strictly match this temperature range.
                 - Style Vibe: {outfit_vibe}. All recommendations must reflect this exact aesthetic.
                 
                 CRITICAL INSTRUCTIONS FOR VARIETY:
                 1. Generate {batch_count} completely fresh, unique, and experimental outfit recommendations.
-                2. Vary color schemes drastically across outfits (use rich jewel tones, terracotta, warm mustard, olive, burgundy, slate blue, warm whites, etc.). Ensure no two outfits share the same primary color scheme.
+                2. Vary color schemes drastically across outfits.
                 
                 SHOPPING & LINKS REQUIREMENT:
                 Outfit Source Mode: {source_mode}.
-                - If Outfit Source Mode is 'Online Shopping (Amazon/Web)', you MUST include direct clickable Markdown shopping links (using real retailers like Amazon, Abercrombie, ASOS, Buck Mason, or Google Shopping search URLs) for each clothing item or accessory so the user can buy them directly.
+                - If Outfit Source Mode is 'Online Shopping (Amazon/Web)', you MUST include direct clickable Markdown shopping links for each clothing item or accessory.
+                
+                CRITICAL IDENTITY ANCHORING FOR GEMINI CHAT PROMPTS:
+                In the `gemini_chat_prompt` value below, you MUST enforce strict negative and positive constraints to prevent facial drift:
+                - Explicitly instruct Gemini Chat to maintain the exact facial structure, facial features, facial hair, skin tone, and body proportions of the reference person.
+                - Strictly mandate that the style, shape, structure, fold, and wrapping of the subject's exact '{headgear_style}' must remain unchanged (only color matching or coordination with the outfit is permitted).
                 
                 Return JSON format with a key "outfits", where each item is an object:
                 {{
-                    "description": "Itemized breakdown tailored to {weather_range} and {outfit_vibe} vibe, with bold color descriptions and clickable Markdown purchase links/search URLs for each piece (Top, Bottom, Shoes, Accessories)",
-                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this specific weather-appropriate outfit, strictly keeping the exact '{headgear_style}' style in a matching or complementary color."
+                    "description": "Itemized breakdown tailored to {weather_range} and {outfit_vibe} vibe, with bold color descriptions and clickable Markdown purchase links/search URLs for each piece",
+                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this specific weather-appropriate outfit. STRICT INSTRUCTION: Do NOT alter the face structure, facial features, body build, or the exact shape and style of the '{headgear_style}'. Preserve the exact reference subject's identity completely."
                 }}
                 """
                 prompt_parts.append(instructions)
@@ -339,12 +437,17 @@ with tab_generator:
                     
                     st.session_state["generated_outfits"] = []
                     for item in parsed_outfits:
-                        st.session_state["generated_outfits"].append({
+                        new_gen = {
+                            "id": str(uuid.uuid4()),
                             "text": item.get("description", ""),
                             "prompt": item.get("gemini_chat_prompt", ""),
-                            "image": None
-                        })
-                    st.success("Weather-optimized outfits and shopping links generated successfully!")
+                            "image": None,
+                            "image_filename": None
+                        }
+                        st.session_state["generated_outfits"].append(new_gen)
+                    
+                    _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+                    st.success("Weather-optimized outfits generated and saved to disk!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
@@ -363,6 +466,11 @@ with tab_generator:
                 with col_img:
                     if outfit_data.get("image"):
                         st.image(outfit_data["image"], caption=f"Gemini Chat Result #{idx+1}", use_container_width=True)
+                        if st.button("🔄 Replace Result Image", key=f"replace_img_{idx}"):
+                            outfit_data["image"] = None
+                            outfit_data["image_filename"] = None
+                            _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+                            st.rerun()
                     else:
                         uploaded_img = st.file_uploader(
                             f"Upload Gemini Chat Image #{idx+1}:", 
@@ -370,18 +478,18 @@ with tab_generator:
                             key=f"gemini_img_up_{idx}"
                         )
                         if uploaded_img:
-                            outfit_data["image"] = Image.open(uploaded_img)
+                            img = Image.open(uploaded_img)
+                            save_generated_outfit_image_disk(idx, img)
                             st.rerun()
 
                 c1, c2 = st.columns([1, 1])
                 with c1:
                     if st.button(f"💾 Save Outfit #{idx + 1}", key=f"save_gen_{idx}"):
-                        if outfit_data not in st.session_state["saved_outfits"]:
-                            st.session_state["saved_outfits"].append(outfit_data)
-                            st.toast("Saved to Closet!")
+                        save_to_closet_disk(outfit_data)
+                        st.toast("Saved permanently to Closet!")
                 with c2:
                     if st.button(f"🗑️ Delete Outfit #{idx + 1}", key=f"del_gen_{idx}"):
-                        st.session_state["generated_outfits"].pop(idx)
+                        delete_generated_outfit_disk(idx)
                         st.rerun()
 
 # ==========================================
@@ -417,7 +525,7 @@ with tab_wardrobe:
                             m = genai.GenerativeModel('gemini-3.5-flash-lite')
                             resp = m.generate_content(cat_prompt)
                             analysis_text = resp.text
-                        save_wardrobe_item(img, analysis_text.strip())
+                        save_wardrobe_item_disk(img, analysis_text.strip())
                     except Exception as e:
                         st.error(f"Failed to analyze image: {str(e)}")
             st.rerun()
@@ -432,7 +540,7 @@ with tab_wardrobe:
                 st.image(item["image"], use_container_width=True)
                 st.caption(item["info"])
                 if st.button(f"Remove Item #{w_idx+1}", key=f"del_w_{w_idx}"):
-                    delete_wardrobe_item(w_idx)
+                    delete_wardrobe_item_disk(w_idx)
                     st.rerun()
     else:
         st.info("No wardrobe items added yet. Upload photos above to build your inventory.")
@@ -453,7 +561,7 @@ with tab_closet:
                         st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
                 
                 if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
-                    st.session_state["saved_outfits"].pop(s_idx)
+                    delete_saved_closet_disk(s_idx)
                     st.toast("Removed from Saved Closet!")
                     st.rerun()
                 st.markdown("---")
