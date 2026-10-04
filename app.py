@@ -154,7 +154,7 @@ def call_gemini_outfits(contents, api_key):
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         safety_settings=safety_settings,
-                        temperature=0.95  # Maximum creativity & color variance
+                        temperature=0.95
                     )
                 )
                 raw_text = response.text
@@ -232,6 +232,23 @@ st.sidebar.header("2. Generation Settings")
 source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
 batch_count = st.sidebar.radio("Number of Outfits:", [3, 5])
 
+# NEW: Weather & Vibe Configuration Options
+st.sidebar.markdown("---")
+st.sidebar.header("🌡️ Temperature / Weather")
+weather_range = st.sidebar.radio(
+    "Select Weather Range:", 
+    ["Current weather", "80°F+", "65–79°F", "50–64°F", "40–49°F", "25–39°F", "Below 25°F"],
+    index=2
+)
+
+st.sidebar.markdown("---")
+st.sidebar.header("✨ Vibe / Style")
+outfit_vibe = st.sidebar.radio(
+    "Select Style Vibe:", 
+    ["Smart casual", "Business casual", "Relaxed", "Traditional", "Experimental"],
+    index=0
+)
+
 with st.expander("ℹ️ How to use this with Gemini Chat", expanded=False):
     st.markdown("""
     1. **Open Gemini Chat**: Go to [gemini.google.com](https://gemini.google.com) and open your dedicated model thread.
@@ -273,7 +290,7 @@ with tab_generator:
         elif "front" not in st.session_state["model_photos"]:
             st.error("Please upload at least the Front model photo before generating.")
         else:
-            with st.spinner(f"Curating {batch_count} brand-new diverse outfits with shopping links..."):
+            with st.spinner(f"Curating {batch_count} weather-optimized outfits for {weather_range} with a {outfit_vibe} vibe..."):
                 prompt_parts = []
                 
                 # Add unique random salt to force completely fresh output every click
@@ -293,21 +310,25 @@ with tab_generator:
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
                 instructions = f"""
-                Act as a bold, avant-garde personal fashion stylist. 
+                Act as an elite personal fashion stylist. 
                 Current live trends & color palettes for '{headgear_style}': {fetched_trends}
                 
+                ENVIRONMENTAL & STYLE CONSTRAINTS:
+                - Weather / Temperature Context: {weather_range}. Ensure layering, fabric choices (e.g., heavy wools for cold vs. breathable linen/cottons for heat), and warmth ratings strictly match this temperature range.
+                - Style Vibe: {outfit_vibe}. All recommendations must reflect this exact aesthetic.
+                
                 CRITICAL INSTRUCTIONS FOR VARIETY:
-                1. Generate {batch_count} completely fresh, unique, and experimental outfit recommendations. Avoid standard boring looks.
-                2. Vary the color schemes drastically across outfits (e.g. use bold jewel tones, earthy terracotta, warm mustard, olive, burgundy, slate blue, and warm whites). Ensure no two outfits share the same primary color scheme.
+                1. Generate {batch_count} completely fresh, unique, and experimental outfit recommendations.
+                2. Vary color schemes drastically across outfits (use rich jewel tones, terracotta, warm mustard, olive, burgundy, slate blue, warm whites, etc.). Ensure no two outfits share the same primary color scheme.
                 
                 SHOPPING & LINKS REQUIREMENT:
                 Outfit Source Mode: {source_mode}.
-                - If Outfit Source Mode is 'Online Shopping (Amazon/Web)', you MUST include direct clickable Markdown shopping links (using real retailers like Amazon, Abercrombie, ASOS, Buck Mason, or Google Shopping search URLs) for each clothing item or accessory in the breakdown so the user can click and buy them directly.
+                - If Outfit Source Mode is 'Online Shopping (Amazon/Web)', you MUST include direct clickable Markdown shopping links (using real retailers like Amazon, Abercrombie, ASOS, Buck Mason, or Google Shopping search URLs) for each clothing item or accessory so the user can buy them directly.
                 
                 Return JSON format with a key "outfits", where each item is an object:
                 {{
-                    "description": "Itemized breakdown with bold color descriptions and clickable Markdown purchase links/search URLs for each piece (Top, Bottom, Shoes, Accessories)",
-                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this specific colored outfit, strictly keeping the exact '{headgear_style}' style in a matching or complementary color."
+                    "description": "Itemized breakdown tailored to {weather_range} and {outfit_vibe} vibe, with bold color descriptions and clickable Markdown purchase links/search URLs for each piece (Top, Bottom, Shoes, Accessories)",
+                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this specific weather-appropriate outfit, strictly keeping the exact '{headgear_style}' style in a matching or complementary color."
                 }}
                 """
                 prompt_parts.append(instructions)
@@ -323,7 +344,7 @@ with tab_generator:
                             "prompt": item.get("gemini_chat_prompt", ""),
                             "image": None
                         })
-                    st.success("New unique outfits and shopping links generated successfully!")
+                    st.success("Weather-optimized outfits and shopping links generated successfully!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
