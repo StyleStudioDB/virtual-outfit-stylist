@@ -2,6 +2,7 @@ import os
 import time
 import json
 import uuid
+import random
 import streamlit as st
 from PIL import Image
 
@@ -40,7 +41,6 @@ for d in [MODEL_DIR, WARDROBE_DIR, OUTFITS_DIR, GENERATED_DIR]:
 def load_persisted_data():
     """Fully restores model photos, wardrobe, generated outfits, and saved outfits from disk on refresh."""
     
-    # 1. Load Model Angle Photos
     if "model_photos" not in st.session_state:
         st.session_state["model_photos"] = {}
         for fname in os.listdir(MODEL_DIR):
@@ -52,7 +52,6 @@ def load_persisted_data():
                 except Exception:
                     pass
 
-    # 2. Load Wardrobe Inventory
     if "wardrobe_items" not in st.session_state:
         st.session_state["wardrobe_items"] = []
         if os.path.exists(WARDROBE_META):
@@ -70,7 +69,6 @@ def load_persisted_data():
             except Exception:
                 pass
 
-    # 3. Load Generated Outfits
     if "generated_outfits" not in st.session_state:
         st.session_state["generated_outfits"] = []
         if os.path.exists(GENERATED_OUTFITS_META):
@@ -93,7 +91,6 @@ def load_persisted_data():
             except Exception:
                 pass
 
-    # 4. Load Saved Closet Outfits
     if "saved_outfits" not in st.session_state:
         st.session_state["saved_outfits"] = []
         if os.path.exists(SAVED_OUTFITS_META):
@@ -228,14 +225,14 @@ def _sync_outfits_metadata(meta_path, outfits_list):
 # ==========================================
 def get_trending_fashion_items(category: str) -> str:
     trends = {
-        "turban": "Trending color pairings: Rich burgundy, mustard yellow, olive green, slate blue, and charcoal textured blazers with contrasting pocket squares.",
-        "cap": "Trending color pairings: Burnt orange streetwear hoodies, forest green varsity jackets, and neutral cargo pants.",
-        "beanie": "Trending color pairings: Warm white 'Cloud Dancer' trench coats, chocolate brown sweaters, and black Chelsea boots.",
-        "tops": "Trending styles: Butter tones, terracotta button-downs, oversized monochrome t-shirts, and structured blazers.",
-        "bottoms": "Trending styles: Tapered trousers, relaxed dark denim, and pleated earthy chinos."
+        "turban": "Diverse aesthetics: Textured wool blazers, relaxed overshirts, structured Harrington jackets, heavy cable-knit cardigans, and minimalist tech-fleece layers.",
+        "cap": "Diverse aesthetics: Oversized vintage hoodies, boxy flannel overshirts, varsity jackets, track windbreakers, and utility cargo jackets.",
+        "beanie": "Diverse aesthetics: Heavy trench coats, chunky fisherman sweaters, quilted liner jackets, structured peacoats, and fleece zip-ups.",
+        "tops": "Diverse styles: Boxy linen button-downs, heavyweight mock-necks, relaxed resort shirts, graphic box tees, and shawl-collar cardigans.",
+        "bottoms": "Diverse styles: Pleated wide-leg trousers, relaxed vintage denim, technical cargo pants, corduroy trousers, and cropped chinos."
     }
     key = category.lower().strip()
-    return trends.get(key, f"Trending styles for {category}: Vibrant accent colors, minimalist layering, and tailored fits.")
+    return trends.get(key, f"Diverse styles for {category}: Eclectic layering, varied silhouettes, and rich fabric combinations.")
 
 # ==========================================
 # GEMINI CALL 
@@ -257,13 +254,13 @@ def call_gemini_outfits(contents, api_key):
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         safety_settings=safety_settings,
-                        temperature=0.95
+                        temperature=1.0
                     )
                 )
                 raw_text = response.text
             else:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(model_name, generation_config={"temperature": 0.95})
+                model = genai.GenerativeModel(model_name, generation_config={"temperature": 1.0})
                 response = model.generate_content(contents)
                 raw_text = response.text
 
@@ -385,10 +382,21 @@ with tab_generator:
         elif "front" not in st.session_state["model_photos"]:
             st.error("Please upload at least the Front model photo before generating.")
         else:
-            with st.spinner(f"Curating {batch_count} weather-optimized outfits for {weather_range} with a {outfit_vibe} vibe..."):
+            with st.spinner(f"Curating {batch_count} radically diverse outfits for {weather_range} with a {outfit_vibe} vibe..."):
                 prompt_parts = []
-                unique_session_salt = f"Session-Seed-{uuid.uuid4().hex[:8]}-{time.time()}"
-                prompt_parts.append(f"System Variation Salt: {unique_session_salt}")
+                
+                color_pools = [
+                    "Vibrant Jewel Tones (Emerald, Sapphire, Ruby Red, Amethyst)",
+                    "Earth & Mineral Tones (Terracotta, Sage Green, Ochre, Sandstone, Chocolate Brown)",
+                    "Monochrome & Neutral Layers (Charcoal, Cloud White, Jet Black, Oatmeal, Slate Grey)",
+                    "Bold & Contrast High-Energy (Burnt Orange, Mustard Yellow, Cobalt Blue, Forest Green)",
+                    "Pastel & Soft Soft-Contrast (Dusty Rose, Buttercream, Lavender, Light Sage, Sky Blue)"
+                ]
+                selected_palette = random.choice(color_pools)
+                random_seed_salt = f"Random-Entropy-Token-{uuid.uuid4().hex}-{time.time()}"
+                
+                prompt_parts.append(f"Entropy Salt Token: {random_seed_salt}")
+                prompt_parts.append(f"Mandatory Color Palette Focus for this batch: {selected_palette}")
 
                 prompt_parts.append("Model Reference Photos:")
                 for angle_name, img in st.session_state["model_photos"].items():
@@ -403,30 +411,35 @@ with tab_generator:
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
                 instructions = f"""
-                Act as an elite personal fashion stylist. 
-                Current live trends & color palettes for '{headgear_style}': {fetched_trends}
+                Act as a radical, boundary-pushing avant-garde fashion director. 
+                Inspirational Style Elements for '{headgear_style}': {fetched_trends}
                 
                 ENVIRONMENTAL & STYLE CONSTRAINTS:
-                - Weather / Temperature Context: {weather_range}. Ensure layering, fabric choices, and warmth ratings strictly match this temperature range.
-                - Style Vibe: {outfit_vibe}. All recommendations must reflect this exact aesthetic.
+                - Weather / Temperature Context: {weather_range}. Ensure layering, fabric structures, and garment weight match this bracket.
+                - Style Vibe: {outfit_vibe}. 
+                - Color Direction: Strictly utilize the '{selected_palette}' assigned above, ensuring stark contrast and rich color blocking across the generated outfits.
                 
-                CRITICAL INSTRUCTIONS FOR VARIETY:
-                1. Generate {batch_count} completely fresh, unique, and experimental outfit recommendations.
-                2. Vary color schemes drastically across outfits.
+                HEADGEAR INDEPENDENCE RULE (CRITICAL):
+                - The outfits must be designed entirely based on the chosen Weather Context ({weather_range}) and Style Vibe ({outfit_vibe}), independent of the selected headgear category ({headgear_style}). 
+                - Do NOT restrict outfit colors or clothing types based on the headgear color. Instead, instruct Gemini Chat that the headgear's color should dynamically adapt to complement the outfit.
+                
+                ABSOLUTE VARIETY MANDATE:
+                1. Avoid repeating similar looks. Each of the {batch_count} outfits must explore a completely distinct silhouette.
+                2. Vary the garments completely: mix heavy outerwear, overshirts, knitwear, hoodies, technical vests, tailored trousers, and relaxed denim.
                 
                 SHOPPING & LINKS REQUIREMENT:
                 Outfit Source Mode: {source_mode}.
-                - If Outfit Source Mode is 'Online Shopping (Amazon/Web)', you MUST include direct clickable Markdown shopping links for each clothing item or accessory.
+                - If Outfit Source Mode is 'Online Shopping (Amazon/Web)', you MUST include direct clickable Markdown shopping links/search URLs for each piece.
                 
                 CRITICAL IDENTITY ANCHORING FOR GEMINI CHAT PROMPTS:
-                In the `gemini_chat_prompt` value below, you MUST enforce strict negative and positive constraints to prevent facial drift:
-                - Explicitly instruct Gemini Chat to maintain the exact facial structure, facial features, facial hair, skin tone, and body proportions of the reference person.
-                - Strictly mandate that the style, shape, structure, fold, and wrapping of the subject's exact '{headgear_style}' must remain unchanged (only color matching or coordination with the outfit is permitted).
+                In the `gemini_chat_prompt` value below, enforce strict identity preservation:
+                - Instruct Gemini Chat to maintain the exact facial structure, facial features, facial hair, skin tone, and body proportions of the reference person.
+                - Strictly mandate that the style, shape, structure, fold, and wrapping of the subject's exact '{headgear_style}' must remain unchanged, but allow its color to adapt or harmonize with the generated outfit colors.
                 
                 Return JSON format with a key "outfits", where each item is an object:
                 {{
-                    "description": "Itemized breakdown tailored to {weather_range} and {outfit_vibe} vibe, with bold color descriptions and clickable Markdown purchase links/search URLs for each piece",
-                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this specific weather-appropriate outfit. STRICT INSTRUCTION: Do NOT alter the face structure, facial features, body build, or the exact shape and style of the '{headgear_style}'. Preserve the exact reference subject's identity completely."
+                    "description": "Itemized breakdown tailored to {weather_range} and {outfit_vibe} vibe, featuring vivid color descriptions and clickable Markdown purchase links/search URLs for each piece",
+                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a full-body lookbook photo of the reference subject wearing this specific colored outfit. STRICT INSTRUCTION: Do NOT alter the face structure, facial features, body build, or the exact shape and style of the '{headgear_style}' (only permit its color to harmonize with the outfit). Preserve the exact reference subject's identity completely."
                 }}
                 """
                 prompt_parts.append(instructions)
@@ -447,7 +460,7 @@ with tab_generator:
                         st.session_state["generated_outfits"].append(new_gen)
                     
                     _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
-                    st.success("Weather-optimized outfits generated and saved to disk!")
+                    st.success("Radically diverse, independent color outfits generated successfully!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
