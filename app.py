@@ -20,7 +20,7 @@ except ModuleNotFoundError:
         st.stop()
 
 # Streamlit Page Setup
-st.set_page_config(page_title="Personal High-End AI Stylist & Dual-Platform Companion", layout="wide")
+st.set_page_config(page_title="Personal High-End AI Stylist & Companion", layout="wide")
 
 # ==========================================
 # LOCAL DISK PERSISTENCE SETUP
@@ -424,7 +424,6 @@ with tab_generator:
                 
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
-                # Enforce Shorts/PJs rule
                 pj_rule = ""
                 if outfit_vibe == "Loungewear / Sleep & Casual (Shorts & PJs)":
                     pj_rule = "MANDATORY OUTFIT TYPE: Include premium loungewear, high-end sleep shorts, luxury pajama sets, or relaxed lounge pants paired with matching hoodies, tees, or robes."
@@ -460,4 +459,143 @@ with tab_generator:
                 prompt_parts.append(instructions)
                 
                 try:
-                    result_json = call_
+                    result_json = call_gemini_outfits(prompt_parts, api_key)
+                    parsed_outfits = result_json.get("outfits", [])
+                    
+                    st.session_state["generated_outfits"] = []
+                    for item in parsed_outfits:
+                        new_gen = {
+                            "id": str(uuid.uuid4()),
+                            "text": item.get("description", ""),
+                            "gemini_prompt": item.get("gemini_prompt", ""),
+                            "chatgpt_prompt": item.get("chatgpt_prompt", ""),
+                            "image": None,
+                            "image_filename": None
+                        }
+                        st.session_state["generated_outfits"].append(new_gen)
+                    
+                    _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+                    st.success("High-end styled outfits and budget-matched links generated successfully!")
+                except Exception as e:
+                    st.error(f"Error generating outfits: {str(e)}")
+
+    st.header("✨ Curated Outfits & Prompts")
+    if st.session_state["generated_outfits"]:
+        for idx, outfit_data in enumerate(st.session_state["generated_outfits"]):
+            with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
+                col_txt, col_img = st.columns([2, 1])
+                
+                with col_txt:
+                    st.markdown(f"### Look Breakdown & Budget Links\n{outfit_data['text']}")
+                    st.markdown("---")
+                    
+                    st.markdown("**1. Gemini Chat Prompt:**")
+                    st.code(outfit_data["gemini_prompt"], language="text")
+                    
+                    st.markdown("**2. ChatGPT / DALL-E 3 Prompt:**")
+                    st.code(outfit_data["chatgpt_prompt"], language="text")
+                
+                with col_img:
+                    if outfit_data.get("image"):
+                        st.image(outfit_data["image"], caption=f"Try-On Result #{idx+1}", use_container_width=True)
+                        if st.button("🔄 Replace Result Image", key=f"replace_img_{idx}"):
+                            outfit_data["image"] = None
+                            outfit_data["image_filename"] = None
+                            _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+                            st.rerun()
+                    else:
+                        uploaded_img = st.file_uploader(
+                            f"Upload Try-On Image #{idx+1}:", 
+                            type=["jpg", "jpeg", "png"], 
+                            key=f"tryon_img_up_{idx}"
+                        )
+                        if uploaded_img:
+                            img = Image.open(uploaded_img)
+                            save_generated_outfit_image_disk(idx, img)
+                            st.rerun()
+
+                c1, c2 = st.columns([1, 1])
+                with c1:
+                    if st.button(f"💾 Save Outfit #{idx + 1}", key=f"save_gen_{idx}"):
+                        save_to_closet_disk(outfit_data)
+                        st.toast("Saved permanently to Closet!")
+                with c2:
+                    if st.button(f"🗑️ Delete Outfit #{idx + 1}", key=f"del_gen_{idx}"):
+                        delete_generated_outfit_disk(idx)
+                        st.rerun()
+
+# ==========================================
+# TAB 2: WARDROBE MANAGEMENT
+# ==========================================
+with tab_wardrobe:
+    st.header("👔 My Personal Wardrobe")
+    st.subheader("Upload Clothing & Accessories")
+    
+    new_wardrobe_files = st.file_uploader(
+        "Upload Clothing/Accessories Photos:", 
+        type=["jpg", "jpeg", "png"], 
+        accept_multiple_files=True,
+        key="main_wardrobe_uploader"
+    )
+    
+    if new_wardrobe_files and api_key:
+        if st.button("⚡ Categorize & Add Items", type="primary"):
+            with st.spinner("AI is analyzing and categorizing wardrobe photos..."):
+                for w_file in new_wardrobe_files:
+                    img = Image.open(w_file)
+                    cat_prompt = [
+                        img, 
+                        "Analyze this fashion item image. Return ONLY a single line formatted as: 'Category: Brief Description' (e.g., 'Tops: Oversized Navy Blue Cotton T-Shirt')."
+                    ]
+                    try:
+                        if NEW_SDK:
+                            client = genai.Client(api_key=api_key)
+                            resp = client.models.generate_content(model='gemini-3.5-flash-lite', contents=cat_prompt)
+                            analysis_text = resp.text
+                        else:
+                            genai.configure(api_key=api_key)
+                            m = genai.GenerativeModel('gemini-3.5-flash-lite')
+                            resp = m.generate_content(cat_prompt)
+                            analysis_text = resp.text
+                        save_wardrobe_item_disk(img, analysis_text.strip())
+                    except Exception as e:
+                        st.error(f"Failed to analyze image: {str(e)}")
+            st.rerun()
+
+    st.markdown("---")
+    st.subheader("Categorized Inventory")
+    if st.session_state["wardrobe_items"]:
+        w_cols = st.columns(4)
+        for w_idx, item in enumerate(st.session_state["wardrobe_items"]):
+            col_target = w_cols[w_idx % 4]
+            with col_target:
+                st.image(item["image"], use_container_width=True)
+                st.caption(item["info"])
+                if st.button(f"Remove Item #{w_idx+1}", key=f"del_w_{w_idx}"):
+                    delete_wardrobe_item_disk(w_idx)
+                    st.rerun()
+    else:
+        st.info("No wardrobe items added yet. Upload photos above to build your inventory.")
+
+# ==========================================
+# TAB 3: SAVED CLOSET
+# ==========================================
+with tab_closet:
+    st.header("🔒 Saved Closet")
+    if st.session_state["saved_outfits"]:
+        for s_idx, item in enumerate(st.session_state["saved_outfits"]):
+            with st.container():
+                col_stxt, col_simg = st.columns([2, 1])
+                with col_stxt:
+                    st.markdown(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
+                with col_simg:
+                    if item.get("image"):
+                        st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
+                
+                if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
+                    delete_saved_closet_disk(s_idx)
+                    st.toast("Removed from Saved Closet!")
+                    st.rerun()
+                st.markdown("---")
+    else:
+        st.info("No saved outfits yet. Click '💾 Save Outfit' in the Outfit Generator tab to store looks here.")
