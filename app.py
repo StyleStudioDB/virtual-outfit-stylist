@@ -3,7 +3,6 @@ import time
 import json
 import uuid
 import random
-import pandas as pd
 import streamlit as st
 from PIL import Image
 
@@ -375,7 +374,7 @@ with st.expander("ℹ️ How to use this with Gemini & ChatGPT", expanded=False)
     1. **Generate Outfits**: Click **'✨ Generate High-End Outfits + Prompts'** below.
     2. **Gemini Chat**: Copy the **Gemini Prompt**, paste it into your Gemini thread where you uploaded your 4-angle photos.
     3. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** and paste it into your locked character profile thread.
-    4. **Shop & Save**: Review the itemized price table, click the shopping links, then upload your final try-on image!
+    4. **Shop & Save**: Review the fully hyperlinked price table with shoes & accessories, click the shopping links, then upload your final try-on image!
     """)
 
 tab_generator, tab_wardrobe, tab_closet = st.tabs([
@@ -410,7 +409,7 @@ with tab_generator:
         elif "front" not in st.session_state["model_photos"]:
             st.error("Please upload at least the Front model photo before generating.")
         else:
-            with st.spinner(f"Curating exactly {batch_count} high-end outfits for {weather_range} with price breakdown tables..."):
+            with st.spinner(f"Curating exactly {batch_count} high-end outfits with shoes, accessories, and hyperlinked price tables..."):
                 prompt_parts = []
                 
                 coordinated_palettes = [
@@ -454,13 +453,16 @@ with tab_generator:
                 - {pj_rule}
                 - Outfit Budget Tier: {budget_tier}. Ensure individual item prices and the overall sum fit strictly within this budget bracket.
                 
-                ADVANCED LAYERING & GOOGLE SHOPPING LINKS MANDATE:
-                1. Every look must feature intentional styling proportions matching the selected vibe and budget tier.
-                2. In the "description" text, EVERY clothing item and accessory MUST be embedded as a clickable Markdown link pointing directly to a Google Shopping search query formatted strictly as: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
-                3. Strictly adhere to the '{selected_palette}' color story across all garments and the matching '{headgear_style}' with zero color clashing.
+                MANDATORY OUTFIT COMPONENTS & SHOES & ACCESSORIES:
+                1. Every single outfit MUST include: Tops/Layers, Bottoms, Headgear ({headgear_style}), Shoes (sneakers, loafers, or boots), AND Accessories (men's necklaces/chains, bracelets, rings, sunglasses, or watches).
+                2. In the "description" text and in the table breakdown, EVERY single item (clothing, shoes, headgear, and accessories) MUST be formatted as a clickable Markdown link pointing directly to a Google Shopping search query formatted strictly as: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
+                3. Strictly adhere to the '{selected_palette}' color story across all garments and accessories with zero color clashing.
                 
-                ITEMIZED PRICE TABLE REQUIREMENT:
-                In addition to the description, provide an array called "items_breakdown" containing objects with keys "Clothing Item" and "Estimated Price", plus a "total_price" string key representing the sum.
+                HYPERLINKED TABLE REQUIREMENT ("items_breakdown"):
+                Provide an array called "items_breakdown" containing objects with keys:
+                - "Clothing Item": A Markdown-formatted string with the clickable Google Shopping search link (e.g. `[COS Minimalist Sneakers](https://www.google.com/search?q=COS+Minimalist+Sneakers&tbm=shop)`).
+                - "Estimated Price": Price string (e.g. "$110").
+                Also include a "total_price" string key representing the sum.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS (TEXT & IMAGE CONSISTENCY):
                 - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness, describing the exact same color-graded outfit as the description).
@@ -468,9 +470,9 @@ with tab_generator:
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
                 - "description": Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring cohesive color-graded descriptions and active Google Shopping search links for every piece.
-                - "items_breakdown": List of objects with keys "Clothing Item" and "Estimated Price".
-                - "total_price": Total cost string (e.g. "$210").
-                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact outfit with HD 4K studio quality.
+                - "items_breakdown": List of objects with keys "Clothing Item" (containing Markdown links) and "Estimated Price".
+                - "total_price": Total cost string (e.g. "$250").
+                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact outfit with HD 4K studio quality including shoes and accessories.
                 - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact outfit.
                 """
                 prompt_parts.append(instructions)
@@ -494,7 +496,7 @@ with tab_generator:
                         st.session_state["generated_outfits"].append(new_gen)
                     
                     _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end outfits with price breakdown tables!")
+                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end outfits with hyperlinked price tables, shoes, and accessories!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
@@ -508,11 +510,18 @@ with tab_generator:
                     st.markdown(f"### Look Breakdown & Shopping Links\n{outfit_data['text']}")
                     st.markdown("---")
                     
-                    # RENDER PRICE BREAKDOWN TABLE IN AREA 1 (Right under the horizontal line)
+                    # RENDER HYPERLINKED PRICE BREAKDOWN TABLE
                     if outfit_data.get("items_breakdown"):
-                        st.markdown("**💰 Itemized Price Breakdown:**")
-                        df_table = pd.DataFrame(outfit_data["items_breakdown"])
-                        st.table(df_table)
+                        st.markdown("**💰 Itemized Price Breakdown (with Clickable Links):**")
+                        
+                        # Build a clean markdown table so links remain fully clickable
+                        table_markdown = "| Item / Accessory | Estimated Price |\n| :--- | :--- |\n"
+                        for row in outfit_data["items_breakdown"]:
+                            item_name = row.get("Clothing Item", "")
+                            item_price = row.get("Estimated Price", "")
+                            table_markdown += f"| {item_name} | {item_price} |\n"
+                        
+                        st.markdown(table_markdown)
                         if outfit_data.get("total_price"):
                             st.markdown(f"**Total Estimated Outfit Cost:** `{outfit_data['total_price']}`")
                         st.markdown("---")
