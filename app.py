@@ -20,7 +20,7 @@ except ModuleNotFoundError:
         st.stop()
 
 # Streamlit Page Setup
-st.set_page_config(page_title="Personal High-End AI Stylist & Companion", layout="wide")
+st.set_page_config(page_title="Personal High-End AI Stylist & Dual-Platform Companion", layout="wide")
 
 # ==========================================
 # LOCAL DISK PERSISTENCE SETUP
@@ -362,7 +362,7 @@ with st.expander("ℹ️ How to use this with Gemini & ChatGPT", expanded=False)
     1. **Generate Outfits**: Click **'✨ Generate High-End Outfits + Prompts'** below.
     2. **Gemini Chat**: Copy the **Gemini Prompt**, paste it into your Gemini thread where you uploaded your 4-angle photos.
     3. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** and paste it into your locked character profile thread.
-    4. **Shop & Save**: Click the automatic brand links matching your selected budget tier to buy pieces, then upload your final try-on image!
+    4. **Shop & Save**: Click the Google Shopping search links matching your selected budget tier to buy pieces, then upload your final try-on image!
     """)
 
 tab_generator, tab_wardrobe, tab_closet = st.tabs([
@@ -440,20 +440,20 @@ with tab_generator:
                 - {pj_rule}
                 - Outfit Budget Tier: {budget_tier}. Automatically source brands and pricing structure matching this exact bracket.
                 
-                ADVANCED LAYERING & BRANDED SHOPPING LINKS MANDATE:
+                ADVANCED LAYERING & GOOGLE SHOPPING LINKS MANDATE:
                 1. Every look must feature intentional styling proportions matching the selected vibe and budget tier.
-                2. For every clothing item, include automatic direct clickable Markdown shopping links or targeted search URLs referencing brands matching the selected budget tier ({budget_tier}).
+                2. For every clothing item and accessory, you MUST generate a direct Google Shopping search link formatted strictly as `https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop` so the user can click directly to live shopping results.
                 3. Strictly adhere to the '{selected_palette}' color story across all garments and the matching '{headgear_style}' with zero color clashing.
                 
-                DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS:
-                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness).
-                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact outfit details and HD quality terms.
+                DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS (TEXT & IMAGE CONSISTENCY):
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness, describing the exact same color-graded outfit as the description).
+                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact color-graded layered outfit details matching the description.
                 
                 Return JSON format with a key "outfits", where each item is an object:
                 {{
-                    "description": "Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring cohesive color-graded descriptions and automatic clickable Markdown brand shopping links for each piece",
-                    "gemini_prompt": "An explicit photo generation prompt for Gemini Chat with HD 4K studio details...",
-                    "chatgpt_prompt": "An explicit text-based prompt for ChatGPT / DALL-E 3 starting with the character profile anchor..."
+                    "description": "Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring cohesive color-graded descriptions and direct Google Shopping search links for each piece",
+                    "gemini_prompt": "An explicit photo generation prompt for Gemini Chat detailing this exact outfit with HD 4K studio quality...",
+                    "chatgpt_prompt": "An explicit text-based prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact outfit..."
                 }}
                 """
                 prompt_parts.append(instructions)
@@ -475,7 +475,7 @@ with tab_generator:
                         st.session_state["generated_outfits"].append(new_gen)
                     
                     _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
-                    st.success("High-end styled outfits and budget-matched links generated successfully!")
+                    st.success("High-end styled outfits and Google Shopping search links generated successfully!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
@@ -486,7 +486,7 @@ with tab_generator:
                 col_txt, col_img = st.columns([2, 1])
                 
                 with col_txt:
-                    st.markdown(f"### Look Breakdown & Budget Links\n{outfit_data['text']}")
+                    st.markdown(f"### Look Breakdown & Shopping Links\n{outfit_data['text']}")
                     st.markdown("---")
                     
                     st.markdown("**1. Gemini Chat Prompt:**")
