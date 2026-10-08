@@ -3,6 +3,7 @@ import time
 import json
 import uuid
 import random
+import pandas as pd
 import streamlit as st
 from PIL import Image
 
@@ -20,7 +21,7 @@ except ModuleNotFoundError:
         st.stop()
 
 # Streamlit Page Setup
-st.set_page_config(page_title="Personal High-End AI Stylist & Dual-Platform Companion", layout="wide")
+st.set_page_config(page_title="Personal High-End AI Stylist & Companion", layout="wide")
 
 # ==========================================
 # LOCAL DISK PERSISTENCE SETUP
@@ -86,6 +87,8 @@ def load_persisted_data():
                         "text": item["text"],
                         "gemini_prompt": item.get("gemini_prompt", item.get("prompt", "")),
                         "chatgpt_prompt": item.get("chatgpt_prompt", ""),
+                        "items_breakdown": item.get("items_breakdown", []),
+                        "total_price": item.get("total_price", ""),
                         "image": img,
                         "image_filename": item.get("image_filename")
                     })
@@ -109,6 +112,8 @@ def load_persisted_data():
                         "text": item["text"],
                         "gemini_prompt": item.get("gemini_prompt", item.get("prompt", "")),
                         "chatgpt_prompt": item.get("chatgpt_prompt", ""),
+                        "items_breakdown": item.get("items_breakdown", []),
+                        "total_price": item.get("total_price", ""),
                         "image": img,
                         "image_filename": item.get("image_filename")
                     })
@@ -189,6 +194,8 @@ def save_to_closet_disk(outfit_data):
         "text": outfit_data["text"],
         "gemini_prompt": outfit_data.get("gemini_prompt", ""),
         "chatgpt_prompt": outfit_data.get("chatgpt_prompt", ""),
+        "items_breakdown": outfit_data.get("items_breakdown", []),
+        "total_price": outfit_data.get("total_price", ""),
         "image": outfit_data.get("image"),
         "image_filename": img_filename
     }
@@ -219,6 +226,8 @@ def _sync_outfits_metadata(meta_path, outfits_list):
             "text": item.get("text"),
             "gemini_prompt": item.get("gemini_prompt", ""),
             "chatgpt_prompt": item.get("chatgpt_prompt", ""),
+            "items_breakdown": item.get("items_breakdown", []),
+            "total_price": item.get("total_price", ""),
             "image_filename": item.get("image_filename")
         })
     with open(meta_path, "w") as f:
@@ -366,7 +375,7 @@ with st.expander("ℹ️ How to use this with Gemini & ChatGPT", expanded=False)
     1. **Generate Outfits**: Click **'✨ Generate High-End Outfits + Prompts'** below.
     2. **Gemini Chat**: Copy the **Gemini Prompt**, paste it into your Gemini thread where you uploaded your 4-angle photos.
     3. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** and paste it into your locked character profile thread.
-    4. **Shop & Save**: Click the direct Google Shopping search links matching your selected budget tier to buy pieces, then upload your final try-on image!
+    4. **Shop & Save**: Review the itemized price table, click the shopping links, then upload your final try-on image!
     """)
 
 tab_generator, tab_wardrobe, tab_closet = st.tabs([
@@ -401,7 +410,7 @@ with tab_generator:
         elif "front" not in st.session_state["model_photos"]:
             st.error("Please upload at least the Front model photo before generating.")
         else:
-            with st.spinner(f"Curating exactly {batch_count} high-end outfits for {weather_range} with direct shopping links..."):
+            with st.spinner(f"Curating exactly {batch_count} high-end outfits for {weather_range} with price breakdown tables..."):
                 prompt_parts = []
                 
                 coordinated_palettes = [
@@ -443,12 +452,15 @@ with tab_generator:
                 - Weather / Temperature Context: {weather_range}. Ensure appropriate layering.
                 - Style Vibe: {outfit_vibe}.
                 - {pj_rule}
-                - Outfit Budget Tier: {budget_tier}.
+                - Outfit Budget Tier: {budget_tier}. Ensure individual item prices and the overall sum fit strictly within this budget bracket.
                 
                 ADVANCED LAYERING & GOOGLE SHOPPING LINKS MANDATE:
                 1. Every look must feature intentional styling proportions matching the selected vibe and budget tier.
                 2. In the "description" text, EVERY clothing item and accessory MUST be embedded as a clickable Markdown link pointing directly to a Google Shopping search query formatted strictly as: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
                 3. Strictly adhere to the '{selected_palette}' color story across all garments and the matching '{headgear_style}' with zero color clashing.
+                
+                ITEMIZED PRICE TABLE REQUIREMENT:
+                In addition to the description, provide an array called "items_breakdown" containing objects with keys "Clothing Item" and "Estimated Price", plus a "total_price" string key representing the sum.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS (TEXT & IMAGE CONSISTENCY):
                 - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness, describing the exact same color-graded outfit as the description).
@@ -456,6 +468,8 @@ with tab_generator:
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
                 - "description": Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring cohesive color-graded descriptions and active Google Shopping search links for every piece.
+                - "items_breakdown": List of objects with keys "Clothing Item" and "Estimated Price".
+                - "total_price": Total cost string (e.g. "$210").
                 - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact outfit with HD 4K studio quality.
                 - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact outfit.
                 """
@@ -472,13 +486,15 @@ with tab_generator:
                             "text": item.get("description", ""),
                             "gemini_prompt": item.get("gemini_prompt", ""),
                             "chatgpt_prompt": item.get("chatgpt_prompt", ""),
+                            "items_breakdown": item.get("items_breakdown", []),
+                            "total_price": item.get("total_price", ""),
                             "image": None,
                             "image_filename": None
                         }
                         st.session_state["generated_outfits"].append(new_gen)
                     
                     _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end outfits with active shopping links!")
+                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end outfits with price breakdown tables!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
@@ -491,6 +507,15 @@ with tab_generator:
                 with col_txt:
                     st.markdown(f"### Look Breakdown & Shopping Links\n{outfit_data['text']}")
                     st.markdown("---")
+                    
+                    # RENDER PRICE BREAKDOWN TABLE IN AREA 1 (Right under the horizontal line)
+                    if outfit_data.get("items_breakdown"):
+                        st.markdown("**💰 Itemized Price Breakdown:**")
+                        df_table = pd.DataFrame(outfit_data["items_breakdown"])
+                        st.table(df_table)
+                        if outfit_data.get("total_price"):
+                            st.markdown(f"**Total Estimated Outfit Cost:** `{outfit_data['total_price']}`")
+                        st.markdown("---")
                     
                     st.markdown("**1. Gemini Chat Prompt:**")
                     st.code(outfit_data["gemini_prompt"], language="text")
