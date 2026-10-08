@@ -20,7 +20,7 @@ except ModuleNotFoundError:
         st.stop()
 
 # Streamlit Page Setup
-st.set_page_config(page_title="AI Fashion Stylist & Dual-Platform Companion", layout="wide")
+st.set_page_config(page_title="Personal High-End AI Stylist & Dual-Platform Companion", layout="wide")
 
 # ==========================================
 # LOCAL DISK PERSISTENCE SETUP
@@ -229,14 +229,14 @@ def _sync_outfits_metadata(meta_path, outfits_list):
 # ==========================================
 def get_trending_fashion_items(category: str) -> str:
     trends = {
-        "turban": "Cohesive style pairings: Military green paired with khaki, mustard, and brown; charcoal with cream and black; navy blue with camel and tan.",
-        "cap": "Cohesive style pairings: Olive green cap paired with tan cargo pants and brown layers; black cap with dark-wash denim and heather grey hoodie; beige cap with chocolate brown jacket.",
-        "beanie": "Cohesive style pairings: Chocolate brown beanie with cream sweater and tan coat; forest green beanie with khaki chinos; black beanie with charcoal layers.",
-        "tops": "Cohesive styles: Neutral base layers with one cohesive color family story.",
-        "bottoms": "Cohesive styles: Dark-wash denim, khaki chinos, and charcoal trousers anchoring upper layers cleanly."
+        "turban": "High-end pairings: Heavyweight flannel overshirt worn open over a tucked tee; relaxed knit cardigan with straight-leg denim; premium fleece hoodies with tailored outerwear.",
+        "cap": "High-end pairings: Boxy graphic tees with open camp-collar shirts; zip-up hoodies under unstructured work jackets; tonal earth-tone sweatshirts with relaxed denim.",
+        "beanie": "High-end pairings: Chunky knit cardigans over heavyweight tees; minimalist fleece layers under wool overcoats; relaxed sweatshirts with straight cargos.",
+        "tops": "Advanced layering: Premium textured overshirts, waffle-knit thermals, boxy resort shirts, and heavy fleece hoodies.",
+        "bottoms": "Modern proportions: Structured straight-leg denim, relaxed-fit vintage wash jeans, and pleated utility trousers."
     }
     key = category.lower().strip()
-    return trends.get(key, f"Cohesive styles for {category}: Professional color grading across all garments and headwear.")
+    return trends.get(key, f"Curated high-end proportions for {category}: Advanced layering and premium fabric weighting.")
 
 # ==========================================
 # GEMINI CALL 
@@ -258,13 +258,13 @@ def call_gemini_outfits(contents, api_key):
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         safety_settings=safety_settings,
-                        temperature=0.75
+                        temperature=0.8
                     )
                 )
                 raw_text = response.text
             else:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(model_name, generation_config={"temperature": 0.75})
+                model = genai.GenerativeModel(model_name, generation_config={"temperature": 0.8})
                 response = model.generate_content(contents)
                 raw_text = response.text
 
@@ -288,7 +288,7 @@ def call_gemini_outfits(contents, api_key):
 # ==========================================
 # UI BUILD
 # ==========================================
-st.title("👗 AI Fashion Stylist & Dual-Platform Companion")
+st.title("👔 Personal High-End AI Stylist & Companion")
 
 st.sidebar.header("🔑 API Settings")
 default_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -330,6 +330,18 @@ source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)"
 batch_count = st.sidebar.radio("Number of Outfits:", [3, 5])
 
 st.sidebar.markdown("---")
+st.sidebar.header("💵 Outfit Budget Tier")
+budget_tier = st.sidebar.radio(
+    "Select Total Outfit Budget:",
+    [
+        "Budget-Friendly (~$150 total | Uniqlo, SHEIN, ASOS, H&M)",
+        "Mid-Tier ($150 - $300 total | Abercrombie, Carhartt WIP, Levi's, COS)",
+        "Luxury / High-End ($300 - $600 total | Buck Mason, Noah, Acne Studios, Stüssy)"
+    ],
+    index=1
+)
+
+st.sidebar.markdown("---")
 st.sidebar.header("🌡️ Temperature / Weather")
 weather_range = st.sidebar.radio(
     "Select Weather Range:", 
@@ -341,16 +353,16 @@ st.sidebar.markdown("---")
 st.sidebar.header("✨ Vibe / Style")
 outfit_vibe = st.sidebar.radio(
     "Select Style Vibe:", 
-    ["Smart casual", "Business casual", "Relaxed", "Traditional", "Experimental"],
+    ["Smart casual", "Business casual", "Relaxed", "Traditional", "Experimental", "Loungewear / Sleep & Casual (Shorts & PJs)"],
     index=0
 )
 
 with st.expander("ℹ️ How to use this with Gemini & ChatGPT", expanded=False):
     st.markdown("""
-    1. **Generate Outfits**: Click **'✨ Generate Outfits + Prompts'** below.
+    1. **Generate Outfits**: Click **'✨ Generate High-End Outfits + Prompts'** below.
     2. **Gemini Chat**: Copy the **Gemini Prompt**, paste it into your Gemini thread where you uploaded your 4-angle photos.
-    3. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** (which includes your master character description anchor) and paste it into your ChatGPT thread.
-    4. **Save & Organize**: Download your favorite try-on pictures, upload them back into the app, and save them permanently to your closet!
+    3. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** and paste it into your locked character profile thread.
+    4. **Shop & Save**: Click the automatic brand links matching your selected budget tier to buy pieces, then upload your final try-on image!
     """)
 
 tab_generator, tab_wardrobe, tab_closet = st.tabs([
@@ -379,27 +391,26 @@ with tab_generator:
 
     st.markdown("---")
     
-    if st.button("✨ Generate Outfits + Prompts", type="primary", use_container_width=True):
+    if st.button("✨ Generate High-End Outfits + Prompts", type="primary", use_container_width=True):
         if not api_key:
             st.error("Please enter or configure your Google AI Studio API Key.")
         elif "front" not in st.session_state["model_photos"]:
             st.error("Please upload at least the Front model photo before generating.")
         else:
-            with st.spinner(f"Curating {batch_count} high-definition color-coordinated outfits for {weather_range}..."):
+            with st.spinner(f"Curating advanced layered outfits for {weather_range} matching your {budget_tier} tier..."):
                 prompt_parts = []
                 
                 coordinated_palettes = [
-                    "Military & Earth Tones Palette: Olive/Military Green, Khaki, Sandstone, Tan, Brown, and Mustard Yellow (Headgear must match or complement this earthy palette cleanly).",
-                    "Warm Neutrals & Denim Palette: Cream, Charcoal, Oatmeal, Dark Denim, and Camel (Headgear must be a neutral or matching earth tone).",
-                    "Rich Autumn Palette: Burgundy/Maroon paired strictly with Charcoal, Black, or Tan — never mixed with conflicting greens or purples.",
-                    "Monochrome & Minimalist Palette: Jet Black, Heather Grey, Cloud White, and Clean Dark Denim (Headgear must be black, grey, or white).",
-                    "Navy & Amber Palette: Navy Blue, Camel, Tan, and Crisp White (Headgear must be navy, tan, or brown)."
+                    "Earthy Streetwear Palette: Olive green, sandstone, warm tan, chocolate brown, and raw denim (Headgear matches the earth tones cleanly).",
+                    "Tonal Neutrals Palette: Oatmeal, heather grey, jet black, off-white, and washed black denim (Headgear is solid neutral).",
+                    "Rich Heritage Palette: Deep burgundy/maroon layering piece, charcoal trousers or dark wash denim, and clean camel accents.",
+                    "Modern Urban Palette: Slate grey, navy blue, crisp white, and stone gray."
                 ]
                 selected_palette = random.choice(coordinated_palettes)
                 random_seed_salt = f"Random-Entropy-Token-{uuid.uuid4().hex[:8]}"
                 
                 prompt_parts.append(f"Entropy Salt Token: {random_seed_salt}")
-                prompt_parts.append(f"STRICT COLOR COORDINATION & HEADGEAR THEME: {selected_palette}")
+                prompt_parts.append(f"STRICT COLOR PALETTE: {selected_palette}")
 
                 prompt_parts.append("Model Reference Photos:")
                 for angle_name, img in st.session_state["model_photos"].items():
@@ -413,176 +424,40 @@ with tab_generator:
                 
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
+                # Enforce Shorts/PJs rule
+                pj_rule = ""
+                if outfit_vibe == "Loungewear / Sleep & Casual (Shorts & PJs)":
+                    pj_rule = "MANDATORY OUTFIT TYPE: Include premium loungewear, high-end sleep shorts, luxury pajama sets, or relaxed lounge pants paired with matching hoodies, tees, or robes."
+                else:
+                    pj_rule = "STRICT CONSTRAINT: DO NOT include shorts or pajamas. All outfits must be full-length trousers, jeans, or cargo pants appropriate for the selected vibe and weather."
+
                 instructions = f"""
-                Act as a professional, high-end menswear fashion designer. 
-                Style Guidelines for '{headgear_style}': {fetched_trends}
+                Act as an elite personal high-end menswear stylist and fashion director specializing in advanced layering and modern streetwear proportions. 
+                Style Guidelines: {fetched_trends}
                 
-                ENVIRONMENTAL & STYLE CONSTRAINTS:
-                - Weather / Temperature Context: {weather_range}. Ensure layering and fabric weights match.
+                ENVIRONMENTAL & BUDGET CONSTRAINTS:
+                - Weather / Temperature Context: {weather_range}. Ensure appropriate layering.
                 - Style Vibe: {outfit_vibe}.
+                - {pj_rule}
+                - Outfit Budget Tier: {budget_tier}. Automatically source brands and pricing structure matching this exact bracket.
                 
-                CRITICAL COLOR THEORY RULES FOR OUTFIT & HEADGEAR (NO CLASHING):
-                1. You MUST strictly adhere to the '{selected_palette}' assigned above. 
-                2. THE HEADGEAR ({headgear_style}) COLOR IS INCLUDED IN THIS PALETTE. The headgear color must be explicitly styled to harmonize with the jacket, layers, pants, and shoes.
-                3. NEVER clash primary complementary colors blindly.
-                
-                SHOPPING & LINKS REQUIREMENT:
-                Outfit Source Mode: {source_mode}.
-                - If 'Online Shopping (Amazon/Web)', include direct clickable Markdown shopping links/search URLs for each piece (including the headgear).
+                ADVANCED LAYERING & BRANDED SHOPPING LINKS MANDATE:
+                1. Every look must feature intentional styling proportions matching the selected vibe and budget tier.
+                2. For every clothing item, include automatic direct clickable Markdown shopping links or targeted search URLs referencing brands matching the selected budget tier ({budget_tier}).
+                3. Strictly adhere to the '{selected_palette}' color story across all garments and the matching '{headgear_style}' with zero color clashing.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS:
-                For each outfit, generate TWO separate prompts:
-                1. `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness).
-                2. `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3. This prompt MUST explicitly start with a descriptive character anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact outfit details and HD quality terms.
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness).
+                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact outfit details and HD quality terms.
                 
                 Return JSON format with a key "outfits", where each item is an object:
                 {{
-                    "description": "Itemized breakdown tailored to {weather_range} and {outfit_vibe} vibe, featuring fully color-graded descriptions for all clothing items AND the {headgear_style}, plus clickable Markdown purchase links/search URLs",
-                    "gemini_prompt": "An explicit photo generation prompt for Gemini Chat...",
+                    "description": "Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring cohesive color-graded descriptions and automatic clickable Markdown brand shopping links for each piece",
+                    "gemini_prompt": "An explicit photo generation prompt for Gemini Chat with HD 4K studio details...",
                     "chatgpt_prompt": "An explicit text-based prompt for ChatGPT / DALL-E 3 starting with the character profile anchor..."
                 }}
                 """
                 prompt_parts.append(instructions)
                 
                 try:
-                    result_json = call_gemini_outfits(prompt_parts, api_key)
-                    parsed_outfits = result_json.get("outfits", [])
-                    
-                    st.session_state["generated_outfits"] = []
-                    for item in parsed_outfits:
-                        new_gen = {
-                            "id": str(uuid.uuid4()),
-                            "text": item.get("description", ""),
-                            "gemini_prompt": item.get("gemini_prompt", ""),
-                            "chatgpt_prompt": item.get("chatgpt_prompt", ""),
-                            "image": None,
-                            "image_filename": None
-                        }
-                        st.session_state["generated_outfits"].append(new_gen)
-                    
-                    _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
-                    st.success("Outfits and dual-platform prompts generated successfully!")
-                except Exception as e:
-                    st.error(f"Error generating outfits: {str(e)}")
-
-    st.header("✨ Curated Outfits & Prompts")
-    if st.session_state["generated_outfits"]:
-        for idx, outfit_data in enumerate(st.session_state["generated_outfits"]):
-            with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
-                col_txt, col_img = st.columns([2, 1])
-                
-                with col_txt:
-                    st.markdown(f"### Look Breakdown & Links\n{outfit_data['text']}")
-                    st.markdown("---")
-                    
-                    # Two separate copy boxes for Gemini vs ChatGPT
-                    st.markdown("**1. Gemini Chat Prompt (Use in Gemini with your uploaded photos):**")
-                    st.code(outfit_data["gemini_prompt"], language="text")
-                    
-                    st.markdown("**2. ChatGPT / DALL-E 3 Prompt (Use in your locked character thread):**")
-                    st.code(outfit_data["chatgpt_prompt"], language="text")
-                
-                with col_img:
-                    if outfit_data.get("image"):
-                        st.image(outfit_data["image"], caption=f"Try-On Result #{idx+1}", use_container_width=True)
-                        if st.button("🔄 Replace Result Image", key=f"replace_img_{idx}"):
-                            outfit_data["image"] = None
-                            outfit_data["image_filename"] = None
-                            _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
-                            st.rerun()
-                    else:
-                        uploaded_img = st.file_uploader(
-                            f"Upload Try-On Image #{idx+1}:", 
-                            type=["jpg", "jpeg", "png"], 
-                            key=f"tryon_img_up_{idx}"
-                        )
-                        if uploaded_img:
-                            img = Image.open(uploaded_img)
-                            save_generated_outfit_image_disk(idx, img)
-                            st.rerun()
-
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    if st.button(f"💾 Save Outfit #{idx + 1}", key=f"save_gen_{idx}"):
-                        save_to_closet_disk(outfit_data)
-                        st.toast("Saved permanently to Closet!")
-                with c2:
-                    if st.button(f"🗑️ Delete Outfit #{idx + 1}", key=f"del_gen_{idx}"):
-                        delete_generated_outfit_disk(idx)
-                        st.rerun()
-
-# ==========================================
-# TAB 2: WARDROBE MANAGEMENT
-# ==========================================
-with tab_wardrobe:
-    st.header("👔 My Personal Wardrobe")
-    st.subheader("Upload Clothing & Accessories")
-    
-    new_wardrobe_files = st.file_uploader(
-        "Upload Clothing/Accessories Photos:", 
-        type=["jpg", "jpeg", "png"], 
-        accept_multiple_files=True,
-        key="main_wardrobe_uploader"
-    )
-    
-    if new_wardrobe_files and api_key:
-        if st.button("⚡ Categorize & Add Items", type="primary"):
-            with st.spinner("AI is analyzing and categorizing wardrobe photos..."):
-                for w_file in new_wardrobe_files:
-                    img = Image.open(w_file)
-                    cat_prompt = [
-                        img, 
-                        "Analyze this fashion item image. Return ONLY a single line formatted as: 'Category: Brief Description' (e.g., 'Tops: Oversized Navy Blue Cotton T-Shirt')."
-                    ]
-                    try:
-                        if NEW_SDK:
-                            client = genai.Client(api_key=api_key)
-                            resp = client.models.generate_content(model='gemini-3.5-flash-lite', contents=cat_prompt)
-                            analysis_text = resp.text
-                        else:
-                            genai.configure(api_key=api_key)
-                            m = genai.GenerativeModel('gemini-3.5-flash-lite')
-                            resp = m.generate_content(cat_prompt)
-                            analysis_text = resp.text
-                        save_wardrobe_item_disk(img, analysis_text.strip())
-                    except Exception as e:
-                        st.error(f"Failed to analyze image: {str(e)}")
-            st.rerun()
-
-    st.markdown("---")
-    st.subheader("Categorized Inventory")
-    if st.session_state["wardrobe_items"]:
-        w_cols = st.columns(4)
-        for w_idx, item in enumerate(st.session_state["wardrobe_items"]):
-            col_target = w_cols[w_idx % 4]
-            with col_target:
-                st.image(item["image"], use_container_width=True)
-                st.caption(item["info"])
-                if st.button(f"Remove Item #{w_idx+1}", key=f"del_w_{w_idx}"):
-                    delete_wardrobe_item_disk(w_idx)
-                    st.rerun()
-    else:
-        st.info("No wardrobe items added yet. Upload photos above to build your inventory.")
-
-# ==========================================
-# TAB 3: SAVED CLOSET
-# ==========================================
-with tab_closet:
-    st.header("🔒 Saved Closet")
-    if st.session_state["saved_outfits"]:
-        for s_idx, item in enumerate(st.session_state["saved_outfits"]):
-            with st.container():
-                col_stxt, col_simg = st.columns([2, 1])
-                with col_stxt:
-                    st.markdown(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
-                with col_simg:
-                    if item.get("image"):
-                        st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
-                
-                if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
-                    delete_saved_closet_disk(s_idx)
-                    st.toast("Removed from Saved Closet!")
-                    st.rerun()
-                st.markdown("---")
-    else:
-        st.info("No saved outfits yet. Click '💾 Save Outfit' in the Outfit Generator tab to store looks here.")
+                    result_json = call_
