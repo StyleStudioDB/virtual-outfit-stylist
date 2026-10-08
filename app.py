@@ -20,7 +20,7 @@ except ModuleNotFoundError:
         st.stop()
 
 # Streamlit Page Setup
-st.set_page_config(page_title="AI Fashion Stylist & Gemini Chat Companion", layout="wide")
+st.set_page_config(page_title="AI Fashion Stylist & Dual-Platform Companion", layout="wide")
 
 # ==========================================
 # LOCAL DISK PERSISTENCE SETUP
@@ -84,7 +84,8 @@ def load_persisted_data():
                     st.session_state["generated_outfits"].append({
                         "id": item.get("id", str(uuid.uuid4())),
                         "text": item["text"],
-                        "prompt": item["prompt"],
+                        "gemini_prompt": item.get("gemini_prompt", item.get("prompt", "")),
+                        "chatgpt_prompt": item.get("chatgpt_prompt", ""),
                         "image": img,
                         "image_filename": item.get("image_filename")
                     })
@@ -106,7 +107,8 @@ def load_persisted_data():
                     st.session_state["saved_outfits"].append({
                         "id": item.get("id", str(uuid.uuid4())),
                         "text": item["text"],
-                        "prompt": item["prompt"],
+                        "gemini_prompt": item.get("gemini_prompt", item.get("prompt", "")),
+                        "chatgpt_prompt": item.get("chatgpt_prompt", ""),
                         "image": img,
                         "image_filename": item.get("image_filename")
                     })
@@ -185,7 +187,8 @@ def save_to_closet_disk(outfit_data):
     saved_item = {
         "id": outfit_data.get("id", str(uuid.uuid4())),
         "text": outfit_data["text"],
-        "prompt": outfit_data["prompt"],
+        "gemini_prompt": outfit_data.get("gemini_prompt", ""),
+        "chatgpt_prompt": outfit_data.get("chatgpt_prompt", ""),
         "image": outfit_data.get("image"),
         "image_filename": img_filename
     }
@@ -214,7 +217,8 @@ def _sync_outfits_metadata(meta_path, outfits_list):
         meta.append({
             "id": item.get("id", str(uuid.uuid4())),
             "text": item.get("text"),
-            "prompt": item.get("prompt"),
+            "gemini_prompt": item.get("gemini_prompt", ""),
+            "chatgpt_prompt": item.get("chatgpt_prompt", ""),
             "image_filename": item.get("image_filename")
         })
     with open(meta_path, "w") as f:
@@ -284,7 +288,7 @@ def call_gemini_outfits(contents, api_key):
 # ==========================================
 # UI BUILD
 # ==========================================
-st.title("👗 AI Fashion Stylist & Gemini Chat Companion")
+st.title("👗 AI Fashion Stylist & Dual-Platform Companion")
 
 st.sidebar.header("🔑 API Settings")
 default_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -341,13 +345,12 @@ outfit_vibe = st.sidebar.radio(
     index=0
 )
 
-with st.expander("ℹ️ How to use this with Gemini Chat", expanded=False):
+with st.expander("ℹ️ How to use this with Gemini & ChatGPT", expanded=False):
     st.markdown("""
-    1. **Open Gemini Chat**: Go to [gemini.google.com](https://gemini.google.com) and open your dedicated model thread.
-    2. **Generate Outfits**: Click **'✨ Generate Outfits + Gemini Prompts'** below.
-    3. **Copy Prompt**: Click **'📋 Copy Prompt for Gemini Chat'** under any outfit.
-    4. **Paste in Chat**: Paste the prompt into Gemini Chat to get your visual try-on picture.
-    5. **Upload & Save**: Download the picture from Gemini, upload it back to that outfit concept, and click **'💾 Save to Closet'**.
+    1. **Generate Outfits**: Click **'✨ Generate Outfits + Prompts'** below.
+    2. **Gemini Chat**: Copy the **Gemini Prompt**, paste it into your Gemini thread where you uploaded your 4-angle photos.
+    3. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** (which includes your master character description anchor) and paste it into your ChatGPT thread.
+    4. **Save & Organize**: Download your favorite try-on pictures, upload them back into the app, and save them permanently to your closet!
     """)
 
 tab_generator, tab_wardrobe, tab_closet = st.tabs([
@@ -376,7 +379,7 @@ with tab_generator:
 
     st.markdown("---")
     
-    if st.button("✨ Generate Outfits + Gemini Prompts", type="primary", use_container_width=True):
+    if st.button("✨ Generate Outfits + Prompts", type="primary", use_container_width=True):
         if not api_key:
             st.error("Please enter or configure your Google AI Studio API Key.")
         elif "front" not in st.session_state["model_photos"]:
@@ -421,22 +424,22 @@ with tab_generator:
                 CRITICAL COLOR THEORY RULES FOR OUTFIT & HEADGEAR (NO CLASHING):
                 1. You MUST strictly adhere to the '{selected_palette}' assigned above. 
                 2. THE HEADGEAR ({headgear_style}) COLOR IS INCLUDED IN THIS PALETTE. The headgear color must be explicitly styled to harmonize with the jacket, layers, pants, and shoes.
-                3. NEVER clash primary complementary colors blindly. Keep color combinations natural, stylish, and visually balanced as a single unified outfit story.
+                3. NEVER clash primary complementary colors blindly.
                 
                 SHOPPING & LINKS REQUIREMENT:
                 Outfit Source Mode: {source_mode}.
                 - If 'Online Shopping (Amazon/Web)', include direct clickable Markdown shopping links/search URLs for each piece (including the headgear).
                 
-                CRITICAL HD PHOTOREALISM & IDENTITY ANCHORING FOR GEMINI CHAT PROMPTS:
-                In the `gemini_chat_prompt` value below, enforce crystal-clear high-definition parameters:
-                - Instruct Gemini Chat to maintain the exact facial structure, facial features, facial hair, skin tone, and body proportions of the reference person.
-                - Explicitly require ULTRA-HIGH DEFINITION 4K/8K lookbook photography, razor-sharp focus, crisp fabric textures, realistic cloth weaves, and professional high-end studio lighting to eliminate any blurriness.
-                - Explicitly specify the exact color of the '{headgear_style}' matching the outfit's cohesive color story without clashing.
+                DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS:
+                For each outfit, generate TWO separate prompts:
+                1. `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness).
+                2. `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3. This prompt MUST explicitly start with a descriptive character anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact outfit details and HD quality terms.
                 
                 Return JSON format with a key "outfits", where each item is an object:
                 {{
                     "description": "Itemized breakdown tailored to {weather_range} and {outfit_vibe} vibe, featuring fully color-graded descriptions for all clothing items AND the {headgear_style}, plus clickable Markdown purchase links/search URLs",
-                    "gemini_chat_prompt": "An explicit photo generation prompt directed at Gemini Chat requesting a crystal-clear, razor-sharp 4K lookbook studio portrait photo of the reference subject wearing this specific, fully color-harmonized outfit. STRICT HD QUALITY: Ultra-detailed fabric textures, crisp focus, high-end professional studio lighting, absolute photorealism, zero blurriness. The '{headgear_style}' must be colored specifically to match the outfit's palette with zero clashing colors. Do NOT alter the face structure, facial features, or body build. Preserve the exact reference subject's identity completely."
+                    "gemini_prompt": "An explicit photo generation prompt for Gemini Chat...",
+                    "chatgpt_prompt": "An explicit text-based prompt for ChatGPT / DALL-E 3 starting with the character profile anchor..."
                 }}
                 """
                 prompt_parts.append(instructions)
@@ -450,18 +453,19 @@ with tab_generator:
                         new_gen = {
                             "id": str(uuid.uuid4()),
                             "text": item.get("description", ""),
-                            "prompt": item.get("gemini_chat_prompt", ""),
+                            "gemini_prompt": item.get("gemini_prompt", ""),
+                            "chatgpt_prompt": item.get("chatgpt_prompt", ""),
                             "image": None,
                             "image_filename": None
                         }
                         st.session_state["generated_outfits"].append(new_gen)
                     
                     _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
-                    st.success("HD color-coordinated outfits generated successfully!")
+                    st.success("Outfits and dual-platform prompts generated successfully!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
-    st.header("✨ Curated Outfits & Gemini Prompts")
+    st.header("✨ Curated Outfits & Prompts")
     if st.session_state["generated_outfits"]:
         for idx, outfit_data in enumerate(st.session_state["generated_outfits"]):
             with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
@@ -470,12 +474,17 @@ with tab_generator:
                 with col_txt:
                     st.markdown(f"### Look Breakdown & Links\n{outfit_data['text']}")
                     st.markdown("---")
-                    st.markdown("**Copy this prompt to your Gemini Chat:**")
-                    st.code(outfit_data["prompt"], language="text")
+                    
+                    # Two separate copy boxes for Gemini vs ChatGPT
+                    st.markdown("**1. Gemini Chat Prompt (Use in Gemini with your uploaded photos):**")
+                    st.code(outfit_data["gemini_prompt"], language="text")
+                    
+                    st.markdown("**2. ChatGPT / DALL-E 3 Prompt (Use in your locked character thread):**")
+                    st.code(outfit_data["chatgpt_prompt"], language="text")
                 
                 with col_img:
                     if outfit_data.get("image"):
-                        st.image(outfit_data["image"], caption=f"Gemini Chat Result #{idx+1}", use_container_width=True)
+                        st.image(outfit_data["image"], caption=f"Try-On Result #{idx+1}", use_container_width=True)
                         if st.button("🔄 Replace Result Image", key=f"replace_img_{idx}"):
                             outfit_data["image"] = None
                             outfit_data["image_filename"] = None
@@ -483,9 +492,9 @@ with tab_generator:
                             st.rerun()
                     else:
                         uploaded_img = st.file_uploader(
-                            f"Upload Gemini Chat Image #{idx+1}:", 
+                            f"Upload Try-On Image #{idx+1}:", 
                             type=["jpg", "jpeg", "png"], 
-                            key=f"gemini_img_up_{idx}"
+                            key=f"tryon_img_up_{idx}"
                         )
                         if uploaded_img:
                             img = Image.open(uploaded_img)
