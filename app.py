@@ -3,6 +3,10 @@ import time
 import json
 import uuid
 import random
+import sqlite3
+import base64
+from io import BytesIO
+import pandas as pd
 import streamlit as st
 from PIL import Image
 
@@ -23,171 +27,191 @@ except ModuleNotFoundError:
 st.set_page_config(page_title="Personal High-End AI Stylist & Companion", layout="wide")
 
 # ==========================================
-# LOCAL DISK PERSISTENCE SETUP
+# UNIFIED SQLITE DATABASE STORAGE SETUP
 # ==========================================
-STORAGE_DIR = "saved_storage"
-MODEL_DIR = os.path.join(STORAGE_DIR, "models")
-WARDROBE_DIR = os.path.join(STORAGE_DIR, "wardrobe")
-OUTFITS_DIR = os.path.join(STORAGE_DIR, "outfits")
-GENERATED_DIR = os.path.join(STORAGE_DIR, "generated")
+DB_FILE = "fashion_stylist.db"
 
-WARDROBE_META = os.path.join(WARDROBE_DIR, "metadata.json")
-SAVED_OUTFITS_META = os.path.join(OUTFITS_DIR, "metadata.json")
-GENERATED_OUTFITS_META = os.path.join(GENERATED_DIR, "metadata.json")
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    # Model Photos Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS model_photos (
+            angle_key TEXT PRIMARY KEY,
+            image_blob TEXT
+        )
+    """)
+    # Wardrobe Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wardrobe (
+            id TEXT PRIMARY KEY,
+            info TEXT,
+            image_blob TEXT
+        )
+    """)
+    # Outfits Table (Generated & Saved)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS outfits (
+            id TEXT PRIMARY KEY,
+            type TEXT, -- 'generated' or 'saved'
+            text TEXT,
+            gemini_prompt TEXT,
+            chatgpt_prompt TEXT,
+            items_breakdown TEXT, -- JSON string of table rows
+            total_price TEXT,
+            image_blob TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-for d in [MODEL_DIR, WARDROBE_DIR, OUTFITS_DIR, GENERATED_DIR]:
-    os.makedirs(d, exist_ok=True)
+init_db()
 
-def load_persisted_data():
-    """Fully restores model photos, wardrobe, generated outfits, and saved outfits from disk on refresh."""
+def pil_to_base64(img):
+    if img is None:
+        return None
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+def base64_to_pil(b64_str):
+    if not b64_str:
+        return None
+    try:
+        img_data = base64.b64decode(b64_str)
+        return Image.open(BytesIO(img_data))
+    except Exception:
+        return None
+
+# Load persistent data from DB into session state
+def load_db_data():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
     
-    if "model_photos" not in st.session_state:
-        st.session_state["model_photos"] = {}
-        for fname in os.listdir(MODEL_DIR):
-            if fname.lower().endswith(('.png', '.jpg', '.jpeg')):
-                angle_key = os.path.splitext(fname)[0]
-                img_path = os.path.join(MODEL_DIR, fname)
-                try:
-                    st.session_state["model_photos"][angle_key] = Image.open(img_path)
-                except Exception:
-                    pass
+    # Model Photos
+    st.session_state["model_photos"] = {}
+    cursor.execute("SELECT angle_key, image_blob FROM model_photos")
+    for angle_key, blob in cursor.fetchall():
+        img = base64_to_pil(blob)
+        if img:
+            st.session_state["model_photos"][angle_key] = img
 
-    if "wardrobe_items" not in st.session_state:
-        st.session_state["wardrobe_items"] = []
-        if os.path.exists(WARDROBE_META):
-            try:
-                with open(WARDROBE_META, "r") as f:
-                    meta = json.load(f)
-                for item in meta:
-                    img_path = os.path.join(WARDROBE_DIR, item["filename"])
-                    if os.path.exists(img_path):
-                        st.session_state["wardrobe_items"].append({
-                            "image": Image.open(img_path),
-                            "info": item["info"],
-                            "filename": item["filename"]
-                        })
-            except Exception:
-                pass
+    # Wardrobe
+    st.session_state["wardrobe_items"] = []
+    cursor.execute("SELECT id, info, image_blob FROM wardrobe")
+    for item_id, info, blob in cursor.fetchall():
+        img = base64_to_pil(blob)
+        if img:
+            st.session_state["wardrobe_items"].append({
+                "id": item_id,
+                "image": img,
+                "info": info
+            })
 
-    if "generated_outfits" not in st.session_state:
-        st.session_state["generated_outfits"] = []
-        if os.path.exists(GENERATED_OUTFITS_META):
-            try:
-                with open(GENERATED_OUTFITS_META, "r") as f:
-                    meta = json.load(f)
-                for item in meta:
-                    img = None
-                    if item.get("image_filename"):
-                        img_path = os.path.join(GENERATED_DIR, item["image_filename"])
-                        if os.path.exists(img_path):
-                            img = Image.open(img_path)
-                    st.session_state["generated_outfits"].append({
-                        "id": item.get("id", str(uuid.uuid4())),
-                        "text": item["text"],
-                        "gemini_prompt": item.get("gemini_prompt", item.get("prompt", "")),
-                        "chatgpt_prompt": item.get("chatgpt_prompt", ""),
-                        "items_breakdown": item.get("items_breakdown", []),
-                        "total_price": item.get("total_price", ""),
-                        "image": img,
-                        "image_filename": item.get("image_filename")
-                    })
-            except Exception:
-                pass
+    # Generated Outfits
+    st.session_state["generated_outfits"] = []
+    cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='generated'")
+    for row in cursor.fetchall():
+        breakdown = []
+        try:
+            breakdown = json.loads(row[4]) if row[4] else []
+        except Exception:
+            pass
+        st.session_state["generated_outfits"].append({
+            "id": row[0],
+            "text": row[1],
+            "gemini_prompt": row[2],
+            "chatgpt_prompt": row[3],
+            "items_breakdown": breakdown,
+            "total_price": row[5],
+            "image": base64_to_pil(row[6])
+        })
 
-    if "saved_outfits" not in st.session_state:
-        st.session_state["saved_outfits"] = []
-        if os.path.exists(SAVED_OUTFITS_META):
-            try:
-                with open(SAVED_OUTFITS_META, "r") as f:
-                    meta = json.load(f)
-                for item in meta:
-                    img = None
-                    if item.get("image_filename"):
-                        img_path = os.path.join(OUTFITS_DIR, item["image_filename"])
-                        if os.path.exists(img_path):
-                            img = Image.open(img_path)
-                    st.session_state["saved_outfits"].append({
-                        "id": item.get("id", str(uuid.uuid4())),
-                        "text": item["text"],
-                        "gemini_prompt": item.get("gemini_prompt", item.get("prompt", "")),
-                        "chatgpt_prompt": item.get("chatgpt_prompt", ""),
-                        "items_breakdown": item.get("items_breakdown", []),
-                        "total_price": item.get("total_price", ""),
-                        "image": img,
-                        "image_filename": item.get("image_filename")
-                    })
-            except Exception:
-                pass
+    # Saved Closet Outfits
+    st.session_state["saved_outfits"] = []
+    cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='saved'")
+    for row in cursor.fetchall():
+        breakdown = []
+        try:
+            breakdown = json.loads(row[4]) if row[4] else []
+        except Exception:
+            pass
+        st.session_state["saved_outfits"].append({
+            "id": row[0],
+            "text": row[1],
+            "gemini_prompt": row[2],
+            "chatgpt_prompt": row[3],
+            "items_breakdown": breakdown,
+            "total_price": row[5],
+            "image": base64_to_pil(row[6])
+        })
+    
+    conn.close()
 
-load_persisted_data()
+if "initialized_db" not in st.session_state:
+    load_db_data()
+    st.session_state["initialized_db"] = True
 
-# ==========================================
-# STORAGE HELPER FUNCTIONS
-# ==========================================
-def save_model_photo_disk(angle_key, pil_image):
+# Database helper mutation functions
+def db_save_model_photo(angle_key, pil_image):
     st.session_state["model_photos"][angle_key] = pil_image
-    file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
-    pil_image.save(file_path, "PNG")
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("REPLACE INTO model_photos (angle_key, image_blob) VALUES (?, ?)", (angle_key, pil_to_base64(pil_image)))
+    conn.commit()
+    conn.close()
 
-def delete_model_photo_disk(angle_key):
+def db_delete_model_photo(angle_key):
     if angle_key in st.session_state["model_photos"]:
         del st.session_state["model_photos"][angle_key]
-    file_path = os.path.join(MODEL_DIR, f"{angle_key}.png")
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM model_photos WHERE angle_key = ?", (angle_key,))
+    conn.commit()
+    conn.close()
 
-def save_wardrobe_item_disk(pil_image, info_str):
-    filename = f"item_{int(time.time() * 1000)}.png"
-    file_path = os.path.join(WARDROBE_DIR, filename)
-    pil_image.save(file_path, "PNG")
-
+def db_save_wardrobe_item(pil_image, info_str):
+    item_id = str(uuid.uuid4())
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO wardrobe (id, info, image_blob) VALUES (?, ?, ?)", (item_id, info_str, pil_to_base64(pil_image)))
+    conn.commit()
+    conn.close()
     st.session_state["wardrobe_items"].append({
+        "id": item_id,
         "image": pil_image,
-        "info": info_str,
-        "filename": filename
+        "info": info_str
     })
-    _sync_metadata(WARDROBE_META, st.session_state["wardrobe_items"])
 
-def delete_wardrobe_item_disk(index):
+def db_delete_wardrobe_item(index):
     if 0 <= index < len(st.session_state["wardrobe_items"]):
         item = st.session_state["wardrobe_items"].pop(index)
-        file_path = os.path.join(WARDROBE_DIR, item.get("filename", ""))
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        _sync_metadata(WARDROBE_META, st.session_state["wardrobe_items"])
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM wardrobe WHERE id = ?", (item["id"],))
+        conn.commit()
+        conn.close()
 
-def save_generated_outfit_image_disk(idx, pil_image):
+def db_save_generated_outfit_image(idx, pil_image):
     if 0 <= idx < len(st.session_state["generated_outfits"]):
         outfit = st.session_state["generated_outfits"][idx]
-        filename = f"gen_{int(time.time() * 1000)}.png"
-        file_path = os.path.join(GENERATED_DIR, filename)
-        pil_image.save(file_path, "PNG")
-        
-        if outfit.get("image_filename"):
-            old_path = os.path.join(GENERATED_DIR, outfit["image_filename"])
-            if os.path.exists(old_path):
-                os.remove(old_path)
-                
         outfit["image"] = pil_image
-        outfit["image_filename"] = filename
-        _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE outfits SET image_blob = ? WHERE id = ?", (pil_to_base64(pil_image), outfit["id"]))
+        conn.commit()
+        conn.close()
 
-def delete_generated_outfit_disk(idx):
+def db_delete_generated_outfit(idx):
     if 0 <= idx < len(st.session_state["generated_outfits"]):
         item = st.session_state["generated_outfits"].pop(idx)
-        if item.get("image_filename"):
-            path = os.path.join(GENERATED_DIR, item["image_filename"])
-            if os.path.exists(path):
-                os.remove(path)
-        _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM outfits WHERE id = ?", (item["id"],))
+        conn.commit()
+        conn.close()
 
-def save_to_closet_disk(outfit_data):
-    img_filename = None
-    if outfit_data.get("image"):
-        img_filename = f"closet_{int(time.time() * 1000)}.png"
-        path = os.path.join(OUTFITS_DIR, img_filename)
-        outfit_data["image"].save(path, "PNG")
-        
+def db_save_to_closet(outfit_data):
     saved_item = {
         "id": outfit_data.get("id", str(uuid.uuid4())),
         "text": outfit_data["text"],
@@ -195,42 +219,37 @@ def save_to_closet_disk(outfit_data):
         "chatgpt_prompt": outfit_data.get("chatgpt_prompt", ""),
         "items_breakdown": outfit_data.get("items_breakdown", []),
         "total_price": outfit_data.get("total_price", ""),
-        "image": outfit_data.get("image"),
-        "image_filename": img_filename
+        "image": outfit_data.get("image")
     }
     
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        REPLACE INTO outfits (id, type, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob)
+        VALUES (?, 'saved', ?, ?, ?, ?, ?, ?)
+    """, (
+        saved_item["id"],
+        saved_item["text"],
+        saved_item["gemini_prompt"],
+        saved_item["chatgpt_prompt"],
+        json.dumps(saved_item["items_breakdown"]),
+        saved_item["total_price"],
+        pil_to_base64(saved_item["image"])
+    ))
+    conn.commit()
+    conn.close()
+
     if not any(o.get("id") == saved_item["id"] for o in st.session_state["saved_outfits"]):
         st.session_state["saved_outfits"].append(saved_item)
-        _sync_outfits_metadata(SAVED_OUTFITS_META, st.session_state["saved_outfits"])
 
-def delete_saved_closet_disk(idx):
+def db_delete_saved_closet(idx):
     if 0 <= idx < len(st.session_state["saved_outfits"]):
         item = st.session_state["saved_outfits"].pop(idx)
-        if item.get("image_filename"):
-            path = os.path.join(OUTFITS_DIR, item["image_filename"])
-            if os.path.exists(path):
-                os.remove(path)
-        _sync_outfits_metadata(SAVED_OUTFITS_META, st.session_state["saved_outfits"])
-
-def _sync_metadata(meta_path, items_list):
-    meta = [{"info": item.get("info"), "filename": item.get("filename")} for item in items_list]
-    with open(meta_path, "w") as f:
-        json.dump(meta, f)
-
-def _sync_outfits_metadata(meta_path, outfits_list):
-    meta = []
-    for item in outfits_list:
-        meta.append({
-            "id": item.get("id", str(uuid.uuid4())),
-            "text": item.get("text"),
-            "gemini_prompt": item.get("gemini_prompt", ""),
-            "chatgpt_prompt": item.get("chatgpt_prompt", ""),
-            "items_breakdown": item.get("items_breakdown", []),
-            "total_price": item.get("total_price", ""),
-            "image_filename": item.get("image_filename")
-        })
-    with open(meta_path, "w") as f:
-        json.dump(meta, f)
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM outfits WHERE id = ?", (item["id"],))
+        conn.commit()
+        conn.close()
 
 # ==========================================
 # TOOL / FUNCTION DEFINITIONS
@@ -327,13 +346,13 @@ for angle in angles:
             st.caption(f"✓ {angle} Photo Saved")
         with col_del:
             if st.button("🗑️", key=f"del_model_{key_str}"):
-                delete_model_photo_disk(key_str)
+                db_delete_model_photo(key_str)
                 st.rerun()
     else:
         uploaded_file = st.sidebar.file_uploader(f"Upload {angle} view:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
         if uploaded_file:
             img = Image.open(uploaded_file)
-            save_model_photo_disk(key_str, img)
+            db_save_model_photo(key_str, img)
             st.rerun()
 
 st.sidebar.markdown("---")
@@ -396,7 +415,7 @@ with tab_generator:
             if k in st.session_state["model_photos"]:
                 st.image(st.session_state["model_photos"][k], use_container_width=True)
                 if st.button(f"Delete {angle}", key=f"main_del_model_{k}"):
-                    delete_model_photo_disk(k)
+                    db_delete_model_photo(k)
                     st.rerun()
             else:
                 st.info("Not uploaded")
@@ -481,21 +500,37 @@ with tab_generator:
                     result_json = call_gemini_outfits(prompt_parts, api_key)
                     parsed_outfits = result_json.get("outfits", [])
                     
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
+                    
                     st.session_state["generated_outfits"] = []
                     for item in parsed_outfits:
+                        outfit_id = str(uuid.uuid4())
                         new_gen = {
-                            "id": str(uuid.uuid4()),
+                            "id": outfit_id,
                             "text": item.get("description", ""),
                             "gemini_prompt": item.get("gemini_prompt", ""),
                             "chatgpt_prompt": item.get("chatgpt_prompt", ""),
                             "items_breakdown": item.get("items_breakdown", []),
                             "total_price": item.get("total_price", ""),
-                            "image": None,
-                            "image_filename": None
+                            "image": None
                         }
                         st.session_state["generated_outfits"].append(new_gen)
+                        
+                        cursor.execute("""
+                            INSERT INTO outfits (id, type, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob)
+                            VALUES (?, 'generated', ?, ?, ?, ?, ?, NULL)
+                        """, (
+                            outfit_id,
+                            new_gen["text"],
+                            new_gen["gemini_prompt"],
+                            new_gen["chatgpt_prompt"],
+                            json.dumps(new_gen["items_breakdown"]),
+                            new_gen["total_price"]
+                        ))
                     
-                    _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+                    conn.commit()
+                    conn.close()
                     st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end outfits with hyperlinked price tables, shoes, and accessories!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
@@ -513,8 +548,6 @@ with tab_generator:
                     # RENDER HYPERLINKED PRICE BREAKDOWN TABLE
                     if outfit_data.get("items_breakdown"):
                         st.markdown("**💰 Itemized Price Breakdown (with Clickable Links):**")
-                        
-                        # Build a clean markdown table so links remain fully clickable
                         table_markdown = "| Item / Accessory | Estimated Price |\n| :--- | :--- |\n"
                         for row in outfit_data["items_breakdown"]:
                             item_name = row.get("Clothing Item", "")
@@ -536,9 +569,7 @@ with tab_generator:
                     if outfit_data.get("image"):
                         st.image(outfit_data["image"], caption=f"Try-On Result #{idx+1}", use_container_width=True)
                         if st.button("🔄 Replace Result Image", key=f"replace_img_{idx}"):
-                            outfit_data["image"] = None
-                            outfit_data["image_filename"] = None
-                            _sync_outfits_metadata(GENERATED_OUTFITS_META, st.session_state["generated_outfits"])
+                            db_save_generated_outfit_image(idx, None)
                             st.rerun()
                     else:
                         uploaded_img = st.file_uploader(
@@ -548,17 +579,17 @@ with tab_generator:
                         )
                         if uploaded_img:
                             img = Image.open(uploaded_img)
-                            save_generated_outfit_image_disk(idx, img)
+                            db_save_generated_outfit_image(idx, img)
                             st.rerun()
 
                 c1, c2 = st.columns([1, 1])
                 with c1:
                     if st.button(f"💾 Save Outfit #{idx + 1}", key=f"save_gen_{idx}"):
-                        save_to_closet_disk(outfit_data)
+                        db_save_to_closet(outfit_data)
                         st.toast("Saved permanently to Closet!")
                 with c2:
                     if st.button(f"🗑️ Delete Outfit #{idx + 1}", key=f"del_gen_{idx}"):
-                        delete_generated_outfit_disk(idx)
+                        db_delete_generated_outfit(idx)
                         st.rerun()
 
 # ==========================================
@@ -594,7 +625,7 @@ with tab_wardrobe:
                             m = genai.GenerativeModel('gemini-3.5-flash-lite')
                             resp = m.generate_content(cat_prompt)
                             analysis_text = resp.text
-                        save_wardrobe_item_disk(img, analysis_text.strip())
+                        db_save_wardrobe_item(img, analysis_text.strip())
                     except Exception as e:
                         st.error(f"Failed to analyze image: {str(e)}")
             st.rerun()
@@ -609,7 +640,7 @@ with tab_wardrobe:
                 st.image(item["image"], use_container_width=True)
                 st.caption(item["info"])
                 if st.button(f"Remove Item #{w_idx+1}", key=f"del_w_{w_idx}"):
-                    delete_wardrobe_item_disk(w_idx)
+                    db_delete_wardrobe_item(w_idx)
                     st.rerun()
     else:
         st.info("No wardrobe items added yet. Upload photos above to build your inventory.")
@@ -630,7 +661,7 @@ with tab_closet:
                         st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
                 
                 if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
-                    delete_saved_closet_disk(s_idx)
+                    db_delete_saved_closet(s_idx)
                     st.toast("Removed from Saved Closet!")
                     st.rerun()
                 st.markdown("---")
