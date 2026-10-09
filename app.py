@@ -1,4 +1,4 @@
-\import os
+import os
 import time
 import json
 import uuid
@@ -34,14 +34,12 @@ DB_FILE = "fashion_stylist.db"
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    # Model Photos Table (supports headgear prefix: turban_front, cap_front, etc.)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS model_photos (
             angle_key TEXT PRIMARY KEY,
             image_blob TEXT
         )
     """)
-    # Wardrobe Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS wardrobe (
             id TEXT PRIMARY KEY,
@@ -49,15 +47,14 @@ def init_db():
             image_blob TEXT
         )
     """)
-    # Outfits Table (Generated & Saved)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS outfits (
             id TEXT PRIMARY KEY,
-            type TEXT, -- 'generated' or 'saved'
+            type TEXT,
             text TEXT,
             gemini_prompt TEXT,
             chatgpt_prompt TEXT,
-            items_breakdown TEXT, -- JSON string of table rows
+            items_breakdown TEXT,
             total_price TEXT,
             image_blob TEXT
         )
@@ -83,12 +80,10 @@ def base64_to_pil(b64_str):
     except Exception:
         return None
 
-# Load persistent data from DB into session state
 def load_db_data():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # Model Photos
     st.session_state["model_photos"] = {}
     cursor.execute("SELECT angle_key, image_blob FROM model_photos")
     for angle_key, blob in cursor.fetchall():
@@ -96,7 +91,6 @@ def load_db_data():
         if img:
             st.session_state["model_photos"][angle_key] = img
 
-    # Wardrobe
     st.session_state["wardrobe_items"] = []
     cursor.execute("SELECT id, info, image_blob FROM wardrobe")
     for item_id, info, blob in cursor.fetchall():
@@ -108,7 +102,6 @@ def load_db_data():
                 "info": info
             })
 
-    # Generated Outfits
     st.session_state["generated_outfits"] = []
     cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='generated'")
     for row in cursor.fetchall():
@@ -127,7 +120,6 @@ def load_db_data():
             "image": base64_to_pil(row[6])
         })
 
-    # Saved Closet Outfits
     st.session_state["saved_outfits"] = []
     cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='saved'")
     for row in cursor.fetchall():
@@ -152,7 +144,6 @@ if "initialized_db" not in st.session_state:
     load_db_data()
     st.session_state["initialized_db"] = True
 
-# Database helper mutation functions
 def db_save_model_photo(angle_key, pil_image):
     st.session_state["model_photos"][angle_key] = pil_image
     conn = sqlite3.connect(DB_FILE)
@@ -251,9 +242,6 @@ def db_delete_saved_closet(idx):
         conn.commit()
         conn.close()
 
-# ==========================================
-# TOOL / FUNCTION DEFINITIONS
-# ==========================================
 def get_trending_fashion_items(category: str) -> str:
     trends = {
         "turban": "High-end pairings: Heavyweight flannel overshirt worn open over a tucked tee; relaxed knit cardigan with straight-leg denim; premium fleece hoodies with tailored outerwear.",
@@ -265,9 +253,6 @@ def get_trending_fashion_items(category: str) -> str:
     key = category.lower().strip()
     return trends.get(key, f"Curated high-end proportions for {category}: Advanced layering and premium fabric weighting.")
 
-# ==========================================
-# GEMINI CALL 
-# ==========================================
 def call_gemini_outfits(contents, api_key):
     model_name = 'gemini-3.5-flash-lite'
     
@@ -316,9 +301,6 @@ def call_gemini_outfits(contents, api_key):
             else:
                 raise e
 
-# ==========================================
-# UI BUILD
-# ==========================================
 st.title("👔 Personal High-End AI Stylist & Companion")
 
 st.sidebar.header("🔑 API Settings")
@@ -334,7 +316,6 @@ st.sidebar.markdown("---")
 st.sidebar.header("1. Model Configuration")
 headgear_style = st.sidebar.radio("Headgear Style:", ["Turban", "Cap", "Beanie"])
 
-# HEADGEAR-SPECIFIC PHOTO GALLERIES
 headgear_prefix = headgear_style.lower()
 st.sidebar.subheader(f"Model Angle Photos ({headgear_style})")
 angles = ["Front", "Left Profile", "Right Profile", "Back"]
@@ -406,9 +387,6 @@ tab_generator, tab_wardrobe, tab_closet = st.tabs([
     "🔒 Saved Closet"
 ])
 
-# ==========================================
-# TAB 1: OUTFIT GENERATOR
-# ==========================================
 with tab_generator:
     st.header(f"👤 Model Angles Gallery ({headgear_style})")
     m_cols = st.columns(4)
@@ -559,7 +537,6 @@ with tab_generator:
                     st.markdown(f"### Look Breakdown & Shopping Links\n{outfit_data['text']}")
                     st.markdown("---")
                     
-                    # RENDER HYPERLINKED PRICE BREAKDOWN TABLE
                     if outfit_data.get("items_breakdown"):
                         st.markdown("**💰 Itemized Price Breakdown (with Clickable Links):**")
                         table_markdown = "| Item / Accessory | Estimated Price |\n| :--- | :--- |\n"
@@ -606,9 +583,6 @@ with tab_generator:
                         db_delete_generated_outfit(idx)
                         st.rerun()
 
-# ==========================================
-# TAB 2: WARDROBE MANAGEMENT
-# ==========================================
 with tab_wardrobe:
     st.header("👔 My Personal Wardrobe")
     st.subheader("Upload Clothing & Accessories")
@@ -659,9 +633,6 @@ with tab_wardrobe:
     else:
         st.info("No wardrobe items added yet. Upload photos above to build your inventory.")
 
-# ==========================================
-# TAB 3: SAVED CLOSET
-# ==========================================
 with tab_closet:
     st.header("🔒 Saved Closet")
     if st.session_state["saved_outfits"]:
@@ -672,7 +643,6 @@ with tab_closet:
                     st.markdown(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
                     st.markdown("---")
                     
-                    # RENDER HYPERLINKED PRICE BREAKDOWN TABLE IN SAVED CLOSET TOO
                     if item.get("items_breakdown"):
                         st.markdown("**💰 Itemized Price Breakdown (with Clickable Links):**")
                         table_markdown = "| Item / Accessory | Estimated Price |\n| :--- | :--- |\n"
