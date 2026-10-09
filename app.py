@@ -34,7 +34,7 @@ DB_FILE = "fashion_stylist.db"
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    # Model Photos Table
+    # Model Photos Table (supports headgear prefix: turban_front, cap_front, etc.)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS model_photos (
             angle_key TEXT PRIMARY KEY,
@@ -334,22 +334,25 @@ st.sidebar.markdown("---")
 st.sidebar.header("1. Model Configuration")
 headgear_style = st.sidebar.radio("Headgear Style:", ["Turban", "Cap", "Beanie"])
 
-st.sidebar.subheader("Model Angle Photos")
+# HEADGEAR-SPECIFIC PHOTO GALLERIES
+headgear_prefix = headgear_style.lower()
+st.sidebar.subheader(f"Model Angle Photos ({headgear_style})")
 angles = ["Front", "Left Profile", "Right Profile", "Back"]
 
 for angle in angles:
-    key_str = angle.lower().replace(" ", "_")
+    angle_slug = angle.lower().replace(" ", "_")
+    key_str = f"{headgear_prefix}_{angle_slug}"
     
     if key_str in st.session_state["model_photos"]:
         col_img, col_del = st.sidebar.columns([3, 1])
         with col_img:
-            st.caption(f"✓ {angle} Photo Saved")
+            st.caption(f"✓ {headgear_style} - {angle} Saved")
         with col_del:
             if st.button("🗑️", key=f"del_model_{key_str}"):
                 db_delete_model_photo(key_str)
                 st.rerun()
     else:
-        uploaded_file = st.sidebar.file_uploader(f"Upload {angle} view:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
+        uploaded_file = st.sidebar.file_uploader(f"Upload {headgear_style} {angle}:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
         if uploaded_file:
             img = Image.open(uploaded_file)
             db_save_model_photo(key_str, img)
@@ -390,10 +393,11 @@ outfit_vibe = st.sidebar.radio(
 
 with st.expander("ℹ️ How to use this with Gemini & ChatGPT", expanded=False):
     st.markdown("""
-    1. **Generate Outfits**: Click **'✨ Generate High-End Outfits + Prompts'** below.
-    2. **Gemini Chat**: Copy the **Gemini Prompt**, paste it into your Gemini thread where you uploaded your 4-angle photos.
-    3. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** and paste it into your locked character profile thread.
-    4. **Shop & Save**: Review the fully hyperlinked price table with shoes & accessories, click the shopping links, then upload your final try-on image!
+    1. **Upload Headgear Photos**: Add your Front and Profile photos for your selected headgear in the sidebar.
+    2. **Generate Outfits**: Click **'✨ Generate High-End Outfits + Prompts'** below.
+    3. **Gemini Chat**: Copy the **Gemini Prompt**, paste it into your Gemini thread where you uploaded your reference photos.
+    4. **ChatGPT (DALL-E 3)**: Copy the **ChatGPT Prompt** and paste it into your locked character profile thread.
+    5. **Shop & Save**: Review the fully hyperlinked price table with shoes & accessories, click shopping links, and upload your try-on image!
     """)
 
 tab_generator, tab_wardrobe, tab_closet = st.tabs([
@@ -406,10 +410,11 @@ tab_generator, tab_wardrobe, tab_closet = st.tabs([
 # TAB 1: OUTFIT GENERATOR
 # ==========================================
 with tab_generator:
-    st.header("👤 Model Angles Gallery")
+    st.header(f"👤 Model Angles Gallery ({headgear_style})")
     m_cols = st.columns(4)
     for idx, angle in enumerate(angles):
-        k = angle.lower().replace(" ", "_")
+        angle_slug = angle.lower().replace(" ", "_")
+        k = f"{headgear_prefix}_{angle_slug}"
         with m_cols[idx]:
             st.caption(f"**{angle} View**")
             if k in st.session_state["model_photos"]:
@@ -418,17 +423,18 @@ with tab_generator:
                     db_delete_model_photo(k)
                     st.rerun()
             else:
-                st.info("Not uploaded")
+                st.info(f"No {headgear_style} {angle} photo uploaded")
 
     st.markdown("---")
     
     if st.button("✨ Generate High-End Outfits + Prompts", type="primary", use_container_width=True):
+        front_key = f"{headgear_prefix}_front"
         if not api_key:
             st.error("Please enter or configure your Google AI Studio API Key.")
-        elif "front" not in st.session_state["model_photos"]:
-            st.error("Please upload at least the Front model photo before generating.")
+        elif front_key not in st.session_state["model_photos"]:
+            st.error(f"Please upload at least the Front photo for '{headgear_style}' in the sidebar before generating.")
         else:
-            with st.spinner(f"Curating exactly {batch_count} high-end outfits with shoes, accessories, and hyperlinked price tables..."):
+            with st.spinner(f"Curating exactly {batch_count} editorial outfits featuring real-world styling instincts for {weather_range}..."):
                 prompt_parts = []
                 
                 coordinated_palettes = [
@@ -443,10 +449,13 @@ with tab_generator:
                 prompt_parts.append(f"Entropy Salt Token: {random_seed_salt}")
                 prompt_parts.append(f"STRICT COLOR PALETTE: {selected_palette}")
 
-                prompt_parts.append("Model Reference Photos:")
-                for angle_name, img in st.session_state["model_photos"].items():
-                    prompt_parts.append(f"Angle: {angle_name}")
-                    prompt_parts.append(img)
+                prompt_parts.append(f"Model Reference Photos ({headgear_style}):")
+                for angle_name in angles:
+                    slug = angle_name.lower().replace(" ", "_")
+                    k_slug = f"{headgear_prefix}_{slug}"
+                    if k_slug in st.session_state["model_photos"]:
+                        prompt_parts.append(f"Angle: {angle_name}")
+                        prompt_parts.append(st.session_state["model_photos"][k_slug])
 
                 if source_mode == "My Wardrobe" and st.session_state["wardrobe_items"]:
                     prompt_parts.append("\nUser's Wardrobe Inventory:")
@@ -464,17 +473,22 @@ with tab_generator:
                 instructions = f"""
                 Act as an elite personal high-end menswear stylist and fashion director. 
                 Generate EXACTLY {batch_count} distinct, high-end outfit concepts.
-                Style Guidelines: {fetched_trends}
+                
+                REAL-WORLD STYLING DNA & INSTINCTS (NO BASIC LOOKS):
+                - Never create boring, flat, or basic outfits. Every look must embody real-world editorial styling proportions (e.g., textured shawl-collar knit cardigans layered over crisp crewneck tees, heavyweight flannel overshirts worn open over tonal bases, high-end fleece hoodies paired with unstructured work jackets).
+                - Use deliberate texture contrast (e.g., ribbed knits, heavy cotton, washed denim, suede or premium leather footwear).
+                - Ground every outfit with exceptional footwear (minimalist leather sneakers, suede loafers, or rugged boots) and curated accessories (silver chains/necklaces, rings, minimalist watches, or sunglasses).
                 
                 ENVIRONMENTAL & BUDGET CONSTRAINTS:
-                - Weather / Temperature Context: {weather_range}. Ensure appropriate layering.
-                - Style Vibe: {outfit_vibe}.
+                - Headgear: {headgear_style} (Must be styled seamlessly into the look).
+                - Weather / Temperature Context: {weather_range}. Ensure appropriate thermal layering and fabric weight.
+                - Style Vibe: {outfit_vibe}. (Apply high-end styling instincts to this vibe without exception).
                 - {pj_rule}
-                - Outfit Budget Tier: {budget_tier}. Ensure individual item prices and the overall sum fit strictly within this budget bracket.
+                - Outfit Budget Tier: {budget_tier}. Ensure individual item prices and overall sum fit strictly within this budget bracket.
                 
-                MANDATORY OUTFIT COMPONENTS & SHOES & ACCESSORIES:
-                1. Every single outfit MUST include: Tops/Layers, Bottoms, Headgear ({headgear_style}), Shoes (sneakers, loafers, or boots), AND Accessories (men's necklaces/chains, bracelets, rings, sunglasses, or watches).
-                2. In the "description" text and in the table breakdown, EVERY single item (clothing, shoes, headgear, and accessories) MUST be formatted as a clickable Markdown link pointing directly to a Google Shopping search query formatted strictly as: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
+                MANDATORY COMPONENT & SHOPPING LINKS MANDATE:
+                1. Every single outfit MUST include: Tops/Layers, Bottoms, Headgear ({headgear_style}), Shoes, and Accessories.
+                2. In the "description" text and in the table breakdown, EVERY single item MUST be formatted as a clickable Markdown link pointing directly to a Google Shopping search query formatted strictly as: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
                 3. Strictly adhere to the '{selected_palette}' color story across all garments and accessories with zero color clashing.
                 
                 HYPERLINKED TABLE REQUIREMENT ("items_breakdown"):
@@ -484,15 +498,15 @@ with tab_generator:
                 Also include a "total_price" string key representing the sum.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS (TEXT & IMAGE CONSISTENCY):
-                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying HD 4K studio quality, absolute photorealism, and zero blurriness, describing the exact same color-graded outfit as the description).
-                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact color-graded layered outfit details matching the description.
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying crisp focus, razor-sharp 4K lookbook studio photography, absolute photorealism, and zero blurriness, describing the exact same textured, cardigans/layered outfit as the description).
+                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact textured, layered outfit details matching the description.
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
-                - "description": Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring cohesive color-graded descriptions and active Google Shopping search links for every piece.
-                - "items_breakdown": List of objects with keys "Clothing Item" (containing Markdown links) and "Estimated Price".
+                - "description": High-end textured outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring active Google Shopping search links for every piece.
+                - "items_breakdown": List of objects with keys "Clothing Item" and "Estimated Price".
                 - "total_price": Total cost string (e.g. "$250").
-                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact outfit with HD 4K studio quality including shoes and accessories.
-                - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact outfit.
+                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact textured outfit with HD 4K studio quality.
+                - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact textured outfit.
                 """
                 prompt_parts.append(instructions)
                 
@@ -531,7 +545,7 @@ with tab_generator:
                     
                     conn.commit()
                     conn.close()
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end outfits with hyperlinked price tables, shoes, and accessories!")
+                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end editorial outfits for your {headgear_style}!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
