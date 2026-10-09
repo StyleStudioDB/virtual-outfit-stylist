@@ -1,4 +1,4 @@
-import os
+\import os
 import time
 import json
 import uuid
@@ -670,6 +670,22 @@ with tab_closet:
                 col_stxt, col_simg = st.columns([2, 1])
                 with col_stxt:
                     st.markdown(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
+                    st.markdown("---")
+                    
+                    # RENDER HYPERLINKED PRICE BREAKDOWN TABLE IN SAVED CLOSET TOO
+                    if item.get("items_breakdown"):
+                        st.markdown("**💰 Itemized Price Breakdown (with Clickable Links):**")
+                        table_markdown = "| Item / Accessory | Estimated Price |\n| :--- | :--- |\n"
+                        for row in item["items_breakdown"]:
+                            item_name = row.get("Clothing Item", "")
+                            item_price = row.get("Estimated Price", "")
+                            table_markdown += f"| {item_name} | {item_price} |\n"
+                        
+                        st.markdown(table_markdown)
+                        if item.get("total_price"):
+                            st.markdown(f"**Total Estimated Outfit Cost:** `{item['total_price']}`")
+                        st.markdown("---")
+                
                 with col_simg:
                     if item.get("image"):
                         st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
