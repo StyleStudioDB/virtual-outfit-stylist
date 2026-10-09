@@ -81,62 +81,76 @@ def base64_to_pil(b64_str):
         return None
 
 def load_db_data():
+    if not os.path.exists(DB_FILE):
+        return
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
     st.session_state["model_photos"] = {}
-    cursor.execute("SELECT angle_key, image_blob FROM model_photos")
-    for angle_key, blob in cursor.fetchall():
-        img = base64_to_pil(blob)
-        if img:
-            st.session_state["model_photos"][angle_key] = img
+    try:
+        cursor.execute("SELECT angle_key, image_blob FROM model_photos")
+        for angle_key, blob in cursor.fetchall():
+            img = base64_to_pil(blob)
+            if img:
+                st.session_state["model_photos"][angle_key] = img
+    except Exception:
+        pass
 
     st.session_state["wardrobe_items"] = []
-    cursor.execute("SELECT id, info, image_blob FROM wardrobe")
-    for item_id, info, blob in cursor.fetchall():
-        img = base64_to_pil(blob)
-        if img:
-            st.session_state["wardrobe_items"].append({
-                "id": item_id,
-                "image": img,
-                "info": info
-            })
+    try:
+        cursor.execute("SELECT id, info, image_blob FROM wardrobe")
+        for item_id, info, blob in cursor.fetchall():
+            img = base64_to_pil(blob)
+            if img:
+                st.session_state["wardrobe_items"].append({
+                    "id": item_id,
+                    "image": img,
+                    "info": info
+                })
+    except Exception:
+        pass
 
     st.session_state["generated_outfits"] = []
-    cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='generated'")
-    for row in cursor.fetchall():
-        breakdown = []
-        try:
-            breakdown = json.loads(row[4]) if row[4] else []
-        except Exception:
-            pass
-        st.session_state["generated_outfits"].append({
-            "id": row[0],
-            "text": row[1],
-            "gemini_prompt": row[2],
-            "chatgpt_prompt": row[3],
-            "items_breakdown": breakdown,
-            "total_price": row[5],
-            "image": base64_to_pil(row[6])
-        })
+    try:
+        cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='generated'")
+        for row in cursor.fetchall():
+            breakdown = []
+            try:
+                breakdown = json.loads(row[4]) if row[4] else []
+            except Exception:
+                pass
+            st.session_state["generated_outfits"].append({
+                "id": row[0],
+                "text": row[1],
+                "gemini_prompt": row[2],
+                "chatgpt_prompt": row[3],
+                "items_breakdown": breakdown,
+                "total_price": row[5],
+                "image": base64_to_pil(row[6])
+            })
+    except Exception:
+        pass
 
     st.session_state["saved_outfits"] = []
-    cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='saved'")
-    for row in cursor.fetchall():
-        breakdown = []
-        try:
-            breakdown = json.loads(row[4]) if row[4] else []
-        except Exception:
-            pass
-        st.session_state["saved_outfits"].append({
-            "id": row[0],
-            "text": row[1],
-            "gemini_prompt": row[2],
-            "chatgpt_prompt": row[3],
-            "items_breakdown": breakdown,
-            "total_price": row[5],
-            "image": base64_to_pil(row[6])
-        })
+    try:
+        cursor.execute("SELECT id, text, gemini_prompt, chatgpt_prompt, items_breakdown, total_price, image_blob FROM outfits WHERE type='saved'")
+        for row in cursor.fetchall():
+            breakdown = []
+            try:
+                breakdown = json.loads(row[4]) if row[4] else []
+            except Exception:
+                pass
+            st.session_state["saved_outfits"].append({
+                "id": row[0],
+                "text": row[1],
+                "gemini_prompt": row[2],
+                "chatgpt_prompt": row[3],
+                "items_breakdown": breakdown,
+                "total_price": row[5],
+                "image": base64_to_pil(row[6])
+            })
+    except Exception:
+        pass
     
     conn.close()
 
@@ -311,6 +325,31 @@ api_key = st.sidebar.text_input(
     type="password",
     help="Loaded automatically from Streamlit Secrets if configured."
 )
+
+# ==========================================
+# DATABASE BACKUP & RESTORE TOOLS (SIDEBAR)
+# ==========================================
+st.sidebar.markdown("---")
+st.sidebar.header("💾 Data Backup & Sync")
+if os.path.exists(DB_FILE):
+    with open(DB_FILE, "rb") as f:
+        db_bytes = f.read()
+    st.sidebar.download_button(
+        label="📥 Download DB Backup",
+        data=db_bytes,
+        file_name="fashion_stylist_backup.db",
+        mime="application/octet-stream",
+        help="Download your database file before updating code to keep your photos and saved outfits safe."
+    )
+
+uploaded_backup = st.sidebar.file_uploader("📤 Restore DB Backup:", type=["db"], key="restore_db_uploader")
+if uploaded_backup is not None:
+    if st.sidebar.button("⚡ Apply Backup File"):
+        with open(DB_FILE, "wb") as f:
+            f.write(uploaded_backup.getbuffer())
+        load_db_data()
+        st.sidebar.success("Database restored successfully! Refreshing...")
+        st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.header("1. Model Configuration")
