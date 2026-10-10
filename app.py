@@ -457,7 +457,7 @@ with tab_generator:
         elif source_mode == "My Wardrobe" and not st.session_state["wardrobe_items"]:
             st.error("Please upload items into your Wardrobe tab first before generating outfits from your wardrobe!")
         else:
-            with st.spinner(f"Curating exactly {batch_count} editorial outfits using your personal wardrobe items with slim tapered bottoms..."):
+            with st.spinner(f"Curating exactly {batch_count} editorial outfits using strictly your actual wardrobe items with slim tapered bottoms..."):
                 prompt_parts = []
                 
                 color_palettes_pool = [
@@ -473,7 +473,7 @@ with tab_generator:
                 random_seed_salt = f"Random-Entropy-Token-{uuid.uuid4().hex[:8]}"
                 
                 prompt_parts.append(f"Entropy Salt Token: {random_seed_salt}")
-                prompt_parts.append(f"MANDATORY COLOR VARIETY RULE: Generate diverse color stories across the {batch_count} outfits. Use distinct palettes across different looks.")
+                prompt_parts.append(f"MANDATORY COLOR VARIETY RULE: Generate diverse color stories across the {batch_count} outfits.")
 
                 prompt_parts.append(f"Model Reference Photos ({headgear_style}):")
                 for angle_name in angles:
@@ -483,17 +483,18 @@ with tab_generator:
                         prompt_parts.append(f"Angle: {angle_name}")
                         prompt_parts.append(st.session_state["model_photos"][k_slug])
 
-                # WARDROBE INVENTORY INCLUSION
+                # ATTACH ACTUAL WARDROBE IMAGES AND INVENTORY TEXT DIRECTLY TO API CALL
                 if source_mode == "My Wardrobe":
-                    prompt_parts.append("\nUser's Wardrobe Inventory:")
+                    prompt_parts.append("\nSTRICT USER WARDROBE INVENTORY (PHOTOS AND DESCRIPTIONS):")
                     for idx, w_item in enumerate(st.session_state["wardrobe_items"]):
-                        prompt_parts.append(f"Wardrobe Item #{idx+1}: {w_item['info']}")
+                        prompt_parts.append(f"Wardrobe Item #{idx+1} Description: {w_item['info']}")
+                        prompt_parts.append(w_item['image'])  # Attached actual photo file into Gemini pipeline
                 
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
                 pj_rule = ""
                 if outfit_vibe == "Loungewear / Sleep & Casual (Shorts & PJs)":
-                    pj_rule = "MANDATORY OUTFIT TYPE: Include premium loungewear, high-end sleep shorts, luxury pajama sets, or relaxed lounge pants paired with matching hoodies, tees, or robes."
+                    pj_rule = "MANDATORY OUTFIT TYPE: Include premium loungewear, high-end sleep shorts, luxury pajama sets, or relaxed lounge pants."
                 else:
                     pj_rule = "STRICT CONSTRAINT: DO NOT include shorts or pajamas. All outfits must be full-length trousers, jeans, or cargo pants appropriate for the selected vibe and weather."
 
@@ -501,25 +502,16 @@ with tab_generator:
                 link_rule = ""
                 if source_mode == "My Wardrobe":
                     link_rule = """
-                    MY WARDROBE EXCLUSIVE MANDATE:
-                    - You MUST build the outfits EXCLUSIVELY using the items provided in the 'User's Wardrobe Inventory' above. 
-                    - DO NOT source, invent, or suggest external clothes from online stores or SHEIN.
-                    - In the itemized price breakdown table ("items_breakdown"), list the exact wardrobe item used with its description, and set the estimated price to "$0 (Owned Wardrobe Item)".
+                    STRICT WARDROBE-ONLY EXCLUSIVE MANDATE:
+                    - You MUST build the outfits EXCLUSIVELY using the actual items provided in the 'STRICT USER WARDROBE INVENTORY' above, referencing their exact visual details from the attached item photos.
+                    - DO NOT invent, assume, or source external clothes from online stores or SHEIN.
+                    - In the itemized price breakdown table ("items_breakdown"), list the exact wardrobe item used, and set the estimated price to "$0 (Owned Wardrobe Item)".
                     - Total estimated cost must be "$0".
                     """
                 elif "SHEIN" in budget_tier:
                     link_rule = f"""
                     SHEIN EXCLUSIVE MANDATE ({budget_tier}):
-                    - Every single item (tops, bottom, headgear, shoes, accessories) must be sourced strictly from SHEIN (e.g. SHEIN Men).
-                    - All shopping links MUST be formatted as direct SHEIN search URLs using this exact structure: `[SHEIN Item Name](https://us.shein.com/pdsearch/Item+Name+Color)` (replacing spaces with '+' in the URL path).
-                    - Individual item prices and total sum must strictly align with the selected tier ({budget_tier}).
-                    """
-                elif "Boutique & Curated Box Style" in budget_tier:
-                    link_rule = """
-                    BOUTIQUE BOX AESTHETIC MANDATE:
-                    - Design outfits reflecting the curated smart-casual aesthetic of high-end styling boxes (e.g. premium knit polos, unstructured blazers, tailored chinos, refined leather loafers or minimalist sneakers).
-                    - All shopping links must be formatted as direct Google Shopping search URLs: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
-                    - Total outfit cost should fall within the $200 - $350 range.
+                    - Every single item must be sourced strictly from SHEIN. All shopping links MUST be formatted as direct SHEIN search URLs: `[SHEIN Item Name](https://us.shein.com/pdsearch/Item+Name+Color)`.
                     """
                 else:
                     link_rule = """
@@ -535,10 +527,6 @@ with tab_generator:
                 - EVERY SINGLE OUTFIT MUST FEATURE SLIM-FIT, TAPERED BOTTOMS (slim-fit tapered trousers, athletic slim-fit denim, slim chinos, or tapered cargo pants). 
                 - STRICTLY FORBIDDEN: Straight-cut, loose, baggy, or wide-leg pants.
                 
-                REAL-WORLD STYLING DNA & INSTINCTS:
-                - Never create boring, flat, or basic outfits. Use real-world editorial layering proportions and deliberate texture contrast.
-                - Ground every outfit with exceptional footwear and curated accessories.
-                
                 ENVIRONMENTAL & BUDGET CONSTRAINTS:
                 - Headgear: {headgear_style} (Must be styled seamlessly into the look).
                 - Weather / Temperature Context: {weather_range}.
@@ -551,13 +539,13 @@ with tab_generator:
                 
                 HYPERLINKED TABLE REQUIREMENT ("items_breakdown"):
                 Provide an array called "items_breakdown" containing objects with keys:
-                - "Clothing Item": A Markdown-formatted string with the item name / link.
+                - "Clothing Item": A Markdown-formatted string with the item name.
                 - "Estimated Price": Price string (e.g. "$0 (Owned Wardrobe Item)" if using wardrobe).
                 Also include a "total_price" string key representing the sum.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS:
-                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, crisp 4K lookbook studio photography, describing slim-fit tapered bottoms).
-                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact outfit details with slim tapered bottoms.
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded model and wardrobe image attachments, crisp 4K lookbook studio photography, describing slim-fit tapered bottoms and the exact wardrobe pieces shown in the attached photos).
+                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact wardrobe pieces and slim tapered bottoms.
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
                 - "description": Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and source mode.
@@ -603,7 +591,7 @@ with tab_generator:
                     
                     conn.commit()
                     conn.close()
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} wardrobe-exclusive outfits for your {headgear_style}!")
+                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} strict wardrobe-exclusive outfits for your {headgear_style}!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
@@ -691,7 +679,7 @@ with tab_wardrobe:
                     img = Image.open(w_file)
                     cat_prompt = [
                         img, 
-                        "Analyze this fashion item image. Return ONLY a single line formatted as: 'Category: Brief Description' (e.g., 'Tops: Oversized Navy Blue Cotton T-Shirt')."
+                        "Analyze this fashion item image precisely. Return ONLY a single line formatted as: 'Category: Brief Description' (e.g., 'Tops: Grey and White Vertical Striped Short-Sleeve Button-Down Shirt' or 'Tops: Chaps Blue Striped Polo Shirt'). Be exact about patterns, colors, and garment types."
                     ]
                     try:
                         if NEW_SDK:
