@@ -284,7 +284,7 @@ def call_gemini_outfits(contents, api_key):
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         safety_settings=safety_settings,
-                        temperature=0.9, # Higher temperature for broader color variation
+                        temperature=0.9,
                         max_output_tokens=8192
                     )
                 )
@@ -458,7 +458,6 @@ with tab_generator:
             with st.spinner(f"Curating exactly {batch_count} editorial outfits featuring diverse color palettes and real-world styling instincts for {weather_range}..."):
                 prompt_parts = []
                 
-                # Expanded Color Palettes to prevent repeating brown/maroon
                 color_palettes_pool = [
                     "Monochrome Slate & Off-White: Cool slate grey, crisp optic white, charcoal, and icy silver accents.",
                     "Earthy Olive & Sandstone: Olive green, warm sand, tan, chocolate brown, and raw denim.",
@@ -468,7 +467,6 @@ with tab_generator:
                     "Warm Sunset & Ecru: Rust orange, ecru, warm beige, and dark olive.",
                     "Sage & Cedar: Muted sage green, cedar wood brown, cream, and washed black denim."
                 ]
-                # Randomly sample unique color stories for the batch
                 selected_palettes = random.sample(color_palettes_pool, min(batch_count, len(color_palettes_pool)))
                 random_seed_salt = f"Random-Entropy-Token-{uuid.uuid4().hex[:8]}"
                 
@@ -595,11 +593,11 @@ with tab_generator:
 
     st.header("✨ Curated Outfits & Prompts")
     if st.session_state["generated_outfits"]:
-        # Map headgear style to your specific Gemini chat links
+        # Map headgear style to your direct active Gemini chat URLs
         chat_links = {
-            "Turban": "https://share.gemini.google/enBQvgddbtJN",
-            "Cap": "https://share.gemini.google/l1GcZy9ZAtw4",
-            "Beanie": "https://share.gemini.google/EPKEbUtbp7Ip"
+            "Turban": "https://gemini.google.com/app/c8945d9da6e528c2",
+            "Cap": "https://gemini.google.com/app/339436a96ac50945",
+            "Beanie": "https://gemini.google.com/app/02d18cedc70e999e"
         }
         current_chat_url = chat_links.get(headgear_style, "https://gemini.google.com")
 
@@ -630,7 +628,7 @@ with tab_generator:
                     st.markdown("**2. ChatGPT / DALL-E 3 Prompt:**")
                     st.code(outfit_data["chatgpt_prompt"], language="text")
                     
-                    # GEMINI CHAT QUICK BUTTON (Right under ChatGPT Prompt as requested)
+                    # GEMINI CHAT QUICK BUTTON (Direct active chat thread)
                     st.markdown(f"[🔗 Open {headgear_style} Gemini Chat]({current_chat_url})")
                     st.markdown("---")
                 
@@ -739,8 +737,8 @@ with tab_closet:
                         st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
                 
                 if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
+                    db_toast = st.toast("Removed from Saved Closet!")
                     db_delete_saved_closet(s_idx)
-                    st.toast("Removed from Saved Closet!")
                     st.rerun()
                 st.markdown("---")
     else:
