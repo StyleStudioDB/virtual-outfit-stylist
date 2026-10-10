@@ -454,8 +454,10 @@ with tab_generator:
             st.error("Please enter or configure your Google AI Studio API Key.")
         elif front_key not in st.session_state["model_photos"]:
             st.error(f"Please upload at least the Front photo for '{headgear_style}' in the sidebar before generating.")
+        elif source_mode == "My Wardrobe" and not st.session_state["wardrobe_items"]:
+            st.error("Please upload items into your Wardrobe tab first before generating outfits from your wardrobe!")
         else:
-            with st.spinner(f"Curating exactly {batch_count} editorial outfits featuring slim tapered bottoms and diverse color palettes for {weather_range}..."):
+            with st.spinner(f"Curating exactly {batch_count} editorial outfits using your personal wardrobe items with slim tapered bottoms..."):
                 prompt_parts = []
                 
                 color_palettes_pool = [
@@ -471,7 +473,7 @@ with tab_generator:
                 random_seed_salt = f"Random-Entropy-Token-{uuid.uuid4().hex[:8]}"
                 
                 prompt_parts.append(f"Entropy Salt Token: {random_seed_salt}")
-                prompt_parts.append(f"MANDATORY COLOR VARIETY RULE: Generate diverse color stories across the {batch_count} outfits. Use distinct palettes (e.g., slate/off-white, sage/cedar, coastal blues, neutral oatmeal, and rich heritage tones) across different looks. DO NOT repeat maroon or brown in every outfit.")
+                prompt_parts.append(f"MANDATORY COLOR VARIETY RULE: Generate diverse color stories across the {batch_count} outfits. Use distinct palettes across different looks.")
 
                 prompt_parts.append(f"Model Reference Photos ({headgear_style}):")
                 for angle_name in angles:
@@ -481,10 +483,11 @@ with tab_generator:
                         prompt_parts.append(f"Angle: {angle_name}")
                         prompt_parts.append(st.session_state["model_photos"][k_slug])
 
-                if source_mode == "My Wardrobe" and st.session_state["wardrobe_items"]:
+                # WARDROBE INVENTORY INCLUSION
+                if source_mode == "My Wardrobe":
                     prompt_parts.append("\nUser's Wardrobe Inventory:")
                     for idx, w_item in enumerate(st.session_state["wardrobe_items"]):
-                        prompt_parts.append(f"Item #{idx+1}: {w_item['info']}")
+                        prompt_parts.append(f"Wardrobe Item #{idx+1}: {w_item['info']}")
                 
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
@@ -494,8 +497,17 @@ with tab_generator:
                 else:
                     pj_rule = "STRICT CONSTRAINT: DO NOT include shorts or pajamas. All outfits must be full-length trousers, jeans, or cargo pants appropriate for the selected vibe and weather."
 
+                # LINK & SOURCE GENERATION RULES
                 link_rule = ""
-                if "SHEIN" in budget_tier:
+                if source_mode == "My Wardrobe":
+                    link_rule = """
+                    MY WARDROBE EXCLUSIVE MANDATE:
+                    - You MUST build the outfits EXCLUSIVELY using the items provided in the 'User's Wardrobe Inventory' above. 
+                    - DO NOT source, invent, or suggest external clothes from online stores or SHEIN.
+                    - In the itemized price breakdown table ("items_breakdown"), list the exact wardrobe item used with its description, and set the estimated price to "$0 (Owned Wardrobe Item)".
+                    - Total estimated cost must be "$0".
+                    """
+                elif "SHEIN" in budget_tier:
                     link_rule = f"""
                     SHEIN EXCLUSIVE MANDATE ({budget_tier}):
                     - Every single item (tops, bottom, headgear, shoes, accessories) must be sourced strictly from SHEIN (e.g. SHEIN Men).
@@ -517,42 +529,42 @@ with tab_generator:
 
                 instructions = f"""
                 Act as an elite personal menswear stylist and fashion director. 
-                Generate EXACTLY {batch_count} distinct, high-end outfit concepts with high color variety.
+                Generate EXACTLY {batch_count} distinct outfit concepts.
                 
                 STRICT BOTTOMS PROPORTION CONSTRAINT (NO STRAIGHT BOTTOMS):
-                - EVERY SINGLE OUTFIT MUST FEATURE SLIM-FIT, TAPERED BOTTOMS (e.g. slim-fit tapered trousers, athletic slim-fit denim, slim chinos, or tapered cargo pants). 
-                - STRICTLY FORBIDDEN: Straight-cut, loose, baggy, or wide-leg pants are completely prohibited. All bottoms must feature a clean, modern taper down to the ankle.
+                - EVERY SINGLE OUTFIT MUST FEATURE SLIM-FIT, TAPERED BOTTOMS (slim-fit tapered trousers, athletic slim-fit denim, slim chinos, or tapered cargo pants). 
+                - STRICTLY FORBIDDEN: Straight-cut, loose, baggy, or wide-leg pants.
                 
-                REAL-WORLD STYLING DNA & INSTINCTS (NO BASIC LOOKS):
-                - Never create boring, flat, or basic outfits. Every look must embody real-world editorial styling proportions (e.g., textured knit cardigans layered over crisp crewneck tees, heavyweight flannel overshirts worn open over tonal bases, fleece hoodies paired with unstructured work jackets).
-                - Use deliberate texture contrast (ribbed knits, heavy cotton, washed denim, suede or leather footwear).
-                - Ground every outfit with exceptional footwear and curated accessories (silver chains, rings, minimalist watches, or sunglasses).
+                REAL-WORLD STYLING DNA & INSTINCTS:
+                - Never create boring, flat, or basic outfits. Use real-world editorial layering proportions and deliberate texture contrast.
+                - Ground every outfit with exceptional footwear and curated accessories.
                 
                 ENVIRONMENTAL & BUDGET CONSTRAINTS:
                 - Headgear: {headgear_style} (Must be styled seamlessly into the look).
-                - Weather / Temperature Context: {weather_range}. Ensure appropriate thermal layering and fabric weight.
+                - Weather / Temperature Context: {weather_range}.
                 - Style Vibe: {outfit_vibe}.
                 - {pj_rule}
-                - Outfit Budget Tier / Source: {budget_tier}.
+                - Outfit Source Mode: {source_mode}.
+                - Outfit Budget Tier: {budget_tier}.
                 
                 {link_rule}
                 
                 HYPERLINKED TABLE REQUIREMENT ("items_breakdown"):
                 Provide an array called "items_breakdown" containing objects with keys:
-                - "Clothing Item": A Markdown-formatted string with the clickable shopping link.
-                - "Estimated Price": Price string (e.g. "$25").
+                - "Clothing Item": A Markdown-formatted string with the item name / link.
+                - "Estimated Price": Price string (e.g. "$0 (Owned Wardrobe Item)" if using wardrobe).
                 Also include a "total_price" string key representing the sum.
                 
-                DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS (TEXT & IMAGE CONSISTENCY):
-                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying crisp focus, razor-sharp 4K lookbook studio photography, absolute photorealism, and zero blurriness. Explicitly describe the model wearing **slim-fit tapered trousers/denim** to ensure the photo matches).
-                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact textured outfit details and **slim-fit tapered bottoms** matching the description.
+                DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS:
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, crisp 4K lookbook studio photography, describing slim-fit tapered bottoms).
+                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact outfit details with slim tapered bottoms.
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
-                - "description": High-end textured outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring active shopping links for every piece and explicit slim tapered pants.
+                - "description": Outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and source mode.
                 - "items_breakdown": List of objects with keys "Clothing Item" and "Estimated Price".
                 - "total_price": Total cost string.
-                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact textured outfit with slim tapered bottoms.
-                - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact outfit with slim tapered bottoms.
+                - "gemini_prompt": Photo generation prompt for Gemini Chat.
+                - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3.
                 """
                 prompt_parts.append(instructions)
                 
@@ -591,7 +603,7 @@ with tab_generator:
                     
                     conn.commit()
                     conn.close()
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} editorial outfits with slim tapered bottoms for your {headgear_style}!")
+                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} wardrobe-exclusive outfits for your {headgear_style}!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
@@ -609,12 +621,12 @@ with tab_generator:
                 col_txt, col_img = st.columns([2, 1])
                 
                 with col_txt:
-                    st.markdown(f"### Look Breakdown & Shopping Links\n{outfit_data['text']}")
+                    st.markdown(f"### Look Breakdown & Wardrobe Items\n{outfit_data['text']}")
                     st.markdown("---")
                     
                     if outfit_data.get("items_breakdown"):
-                        st.markdown("**💰 Itemized Price Breakdown (with Clickable Links):**")
-                        table_markdown = "| Item / Accessory | Estimated Price |\n| :--- | :--- |\n"
+                        st.markdown("**👕 Wardrobe Items Breakdown:**")
+                        table_markdown = "| Item / Accessory | Status / Price |\n| :--- | :--- |\n"
                         for row in outfit_data["items_breakdown"]:
                             item_name = row.get("Clothing Item", "")
                             item_price = row.get("Estimated Price", "")
@@ -622,7 +634,7 @@ with tab_generator:
                         
                         st.markdown(table_markdown)
                         if outfit_data.get("total_price"):
-                            st.markdown(f"**Total Estimated Outfit Cost:** `{outfit_data['total_price']}`")
+                            st.markdown(f"**Total Cost:** `{outfit_data['total_price']}`")
                         st.markdown("---")
                     
                     st.markdown("**1. Gemini Chat Prompt:**")
@@ -722,8 +734,8 @@ with tab_closet:
                     st.markdown("---")
                     
                     if item.get("items_breakdown"):
-                        st.markdown("**💰 Itemized Price Breakdown (with Clickable Links):**")
-                        table_markdown = "| Item / Accessory | Estimated Price |\n| :--- | :--- |\n"
+                        st.markdown("**👕 Wardrobe Items Breakdown:**")
+                        table_markdown = "| Item / Accessory | Status / Price |\n| :--- | :--- |\n"
                         for row in item["items_breakdown"]:
                             item_name = row.get("Clothing Item", "")
                             item_price = row.get("Estimated Price", "")
@@ -731,7 +743,7 @@ with tab_closet:
                         
                         st.markdown(table_markdown)
                         if item.get("total_price"):
-                            st.markdown(f"**Total Estimated Outfit Cost:** `{item['total_price']}`")
+                            st.markdown(f"**Total Cost:** `{item['total_price']}`")
                         st.markdown("---")
                 
                 with col_simg:
