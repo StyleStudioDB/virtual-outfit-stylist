@@ -284,7 +284,7 @@ def call_gemini_outfits(contents, api_key):
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         safety_settings=safety_settings,
-                        temperature=0.8,
+                        temperature=0.9, # Higher temperature for broader color variation
                         max_output_tokens=8192
                     )
                 )
@@ -293,7 +293,7 @@ def call_gemini_outfits(contents, api_key):
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(
                     model_name, 
-                    generation_config={"temperature": 0.8, "max_output_tokens": 8192}
+                    generation_config={"temperature": 0.9, "max_output_tokens": 8192}
                 )
                 response = model.generate_content(contents)
                 raw_text = response.text
@@ -381,7 +381,7 @@ for angle in angles:
 st.sidebar.markdown("---")
 st.sidebar.header("2. Generation Settings")
 source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)", "My Wardrobe"])
-batch_count = st.sidebar.radio("Number of Outfits:", [3, 5])
+batch_count = st.sidebar.radio("Number of Outfits:", [5, 10])
 
 st.sidebar.markdown("---")
 st.sidebar.header("💵 Outfit Budget & Brand Tier")
@@ -455,20 +455,25 @@ with tab_generator:
         elif front_key not in st.session_state["model_photos"]:
             st.error(f"Please upload at least the Front photo for '{headgear_style}' in the sidebar before generating.")
         else:
-            with st.spinner(f"Curating exactly {batch_count} editorial outfits featuring real-world styling instincts for {weather_range}..."):
+            with st.spinner(f"Curating exactly {batch_count} editorial outfits featuring diverse color palettes and real-world styling instincts for {weather_range}..."):
                 prompt_parts = []
                 
-                coordinated_palettes = [
-                    "Earthy Streetwear Palette: Olive green, sandstone, warm tan, chocolate brown, and raw denim (Headgear matches the earth tones cleanly).",
-                    "Tonal Neutrals Palette: Oatmeal, heather grey, jet black, off-white, and washed black denim (Headgear is solid neutral).",
-                    "Rich Heritage Palette: Deep burgundy/maroon layering piece, charcoal trousers or dark wash denim, and clean camel accents.",
-                    "Modern Urban Palette: Slate grey, navy blue, crisp white, and stone gray."
+                # Expanded Color Palettes to prevent repeating brown/maroon
+                color_palettes_pool = [
+                    "Monochrome Slate & Off-White: Cool slate grey, crisp optic white, charcoal, and icy silver accents.",
+                    "Earthy Olive & Sandstone: Olive green, warm sand, tan, chocolate brown, and raw denim.",
+                    "Rich Heritage Tones: Deep burgundy, charcoal trousers, navy, and clean camel accents.",
+                    "Coastal Blue & Stone: Indigo blue, stone grey, cream, and soft sky blue layering.",
+                    "Urban Minimalist Neutral: Oatmeal, jet black, heather grey, and stark white.",
+                    "Warm Sunset & Ecru: Rust orange, ecru, warm beige, and dark olive.",
+                    "Sage & Cedar: Muted sage green, cedar wood brown, cream, and washed black denim."
                 ]
-                selected_palette = random.choice(coordinated_palettes)
+                # Randomly sample unique color stories for the batch
+                selected_palettes = random.sample(color_palettes_pool, min(batch_count, len(color_palettes_pool)))
                 random_seed_salt = f"Random-Entropy-Token-{uuid.uuid4().hex[:8]}"
                 
                 prompt_parts.append(f"Entropy Salt Token: {random_seed_salt}")
-                prompt_parts.append(f"STRICT COLOR PALETTE: {selected_palette}")
+                prompt_parts.append(f"MANDATORY COLOR VARIETY RULE: Generate diverse color stories across the {batch_count} outfits. Use distinct palettes (e.g., slate/off-white, sage/cedar, coastal blues, neutral oatmeal, and rich heritage tones) across different looks. DO NOT repeat maroon or brown in every outfit.")
 
                 prompt_parts.append(f"Model Reference Photos ({headgear_style}):")
                 for angle_name in angles:
@@ -491,7 +496,6 @@ with tab_generator:
                 else:
                     pj_rule = "STRICT CONSTRAINT: DO NOT include shorts or pajamas. All outfits must be full-length trousers, jeans, or cargo pants appropriate for the selected vibe and weather."
 
-                # Link generation rules based on tier
                 link_rule = ""
                 if "SHEIN" in budget_tier:
                     link_rule = f"""
@@ -515,7 +519,7 @@ with tab_generator:
 
                 instructions = f"""
                 Act as an elite personal menswear stylist and fashion director. 
-                Generate EXACTLY {batch_count} distinct, high-end outfit concepts.
+                Generate EXACTLY {batch_count} distinct, high-end outfit concepts with high color variety.
                 
                 REAL-WORLD STYLING DNA & INSTINCTS (NO BASIC LOOKS):
                 - Never create boring, flat, or basic outfits. Every look must embody real-world editorial styling proportions (e.g., textured knit cardigans layered over crisp crewneck tees, heavyweight flannel overshirts worn open over tonal bases, fleece hoodies paired with unstructured work jackets).
@@ -591,6 +595,14 @@ with tab_generator:
 
     st.header("✨ Curated Outfits & Prompts")
     if st.session_state["generated_outfits"]:
+        # Map headgear style to your specific Gemini chat links
+        chat_links = {
+            "Turban": "https://share.gemini.google/enBQvgddbtJN",
+            "Cap": "https://share.gemini.google/l1GcZy9ZAtw4",
+            "Beanie": "https://share.gemini.google/EPKEbUtbp7Ip"
+        }
+        current_chat_url = chat_links.get(headgear_style, "https://gemini.google.com")
+
         for idx, outfit_data in enumerate(st.session_state["generated_outfits"]):
             with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
                 col_txt, col_img = st.columns([2, 1])
@@ -617,6 +629,10 @@ with tab_generator:
                     
                     st.markdown("**2. ChatGPT / DALL-E 3 Prompt:**")
                     st.code(outfit_data["chatgpt_prompt"], language="text")
+                    
+                    # GEMINI CHAT QUICK BUTTON (Right under ChatGPT Prompt as requested)
+                    st.markdown(f"[🔗 Open {headgear_style} Gemini Chat]({current_chat_url})")
+                    st.markdown("---")
                 
                 with col_img:
                     if outfit_data.get("image"):
