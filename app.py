@@ -384,15 +384,19 @@ source_mode = st.sidebar.radio("Outfit Source:", ["Online Shopping (Amazon/Web)"
 batch_count = st.sidebar.radio("Number of Outfits:", [3, 5])
 
 st.sidebar.markdown("---")
-st.sidebar.header("💵 Outfit Budget Tier")
+st.sidebar.header("💵 Outfit Budget & Brand Tier")
 budget_tier = st.sidebar.radio(
-    "Select Total Outfit Budget:",
+    "Select Total Outfit Budget / Source:",
     [
+        "Boutique & Curated Box Style (~$200 - $350 total | Instagram-ad boutique aesthetic with Google Shopping links)",
+        "SHEIN Tier 1 ($30 - $80 total | Essential SHEIN pieces with direct SHEIN search links)",
+        "SHEIN Tier 2 ($80 - $150 total | Multi-piece SHEIN outfits with direct SHEIN search links)",
+        "SHEIN Tier 3 ($150 - $300 total | Premium layered SHEIN styling with complete accessories)",
         "Budget-Friendly (~$150 total | Uniqlo, SHEIN, ASOS, H&M)",
         "Mid-Tier ($150 - $300 total | Abercrombie, Carhartt WIP, Levi's, COS)",
         "Luxury / High-End ($300 - $600 total | Buck Mason, Noah, Acne Studios, Stüssy)"
     ],
-    index=1
+    index=0
 )
 
 st.sidebar.markdown("---")
@@ -487,42 +491,61 @@ with tab_generator:
                 else:
                     pj_rule = "STRICT CONSTRAINT: DO NOT include shorts or pajamas. All outfits must be full-length trousers, jeans, or cargo pants appropriate for the selected vibe and weather."
 
+                # Link generation rules based on tier
+                link_rule = ""
+                if "SHEIN" in budget_tier:
+                    link_rule = f"""
+                    SHEIN EXCLUSIVE MANDATE ({budget_tier}):
+                    - Every single item (tops, bottom, headgear, shoes, accessories) must be sourced strictly from SHEIN (e.g. SHEIN Men).
+                    - All shopping links MUST be formatted as direct SHEIN search URLs using this exact structure: `[SHEIN Item Name](https://us.shein.com/pdsearch/Item+Name+Color)` (replacing spaces with '+' in the URL path).
+                    - Individual item prices and total sum must strictly align with the selected tier ({budget_tier}).
+                    """
+                elif "Boutique & Curated Box Style" in budget_tier:
+                    link_rule = """
+                    BOUTIQUE BOX AESTHETIC MANDATE:
+                    - Design outfits reflecting the curated smart-casual aesthetic of high-end styling boxes (e.g. premium knit polos, unstructured blazers, tailored chinos, refined leather loafers or minimalist sneakers).
+                    - All shopping links must be formatted as direct Google Shopping search URLs: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
+                    - Total outfit cost should fall within the $200 - $350 range.
+                    """
+                else:
+                    link_rule = """
+                    STANDARD SHOPPING LINKS MANDATE:
+                    - Every single item must be formatted as a clickable Markdown link pointing directly to Google Shopping: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
+                    """
+
                 instructions = f"""
-                Act as an elite personal high-end menswear stylist and fashion director. 
+                Act as an elite personal menswear stylist and fashion director. 
                 Generate EXACTLY {batch_count} distinct, high-end outfit concepts.
                 
                 REAL-WORLD STYLING DNA & INSTINCTS (NO BASIC LOOKS):
-                - Never create boring, flat, or basic outfits. Every look must embody real-world editorial styling proportions (e.g., textured shawl-collar knit cardigans layered over crisp crewneck tees, heavyweight flannel overshirts worn open over tonal bases, high-end fleece hoodies paired with unstructured work jackets).
-                - Use deliberate texture contrast (e.g., ribbed knits, heavy cotton, washed denim, suede or premium leather footwear).
-                - Ground every outfit with exceptional footwear (minimalist leather sneakers, suede loafers, or rugged boots) and curated accessories (silver chains/necklaces, rings, minimalist watches, or sunglasses).
+                - Never create boring, flat, or basic outfits. Every look must embody real-world editorial styling proportions (e.g., textured knit cardigans layered over crisp crewneck tees, heavyweight flannel overshirts worn open over tonal bases, fleece hoodies paired with unstructured work jackets).
+                - Use deliberate texture contrast (ribbed knits, heavy cotton, washed denim, suede or leather footwear).
+                - Ground every outfit with exceptional footwear and curated accessories (silver chains, rings, minimalist watches, or sunglasses).
                 
                 ENVIRONMENTAL & BUDGET CONSTRAINTS:
                 - Headgear: {headgear_style} (Must be styled seamlessly into the look).
                 - Weather / Temperature Context: {weather_range}. Ensure appropriate thermal layering and fabric weight.
-                - Style Vibe: {outfit_vibe}. (Apply high-end styling instincts to this vibe without exception).
+                - Style Vibe: {outfit_vibe}.
                 - {pj_rule}
-                - Outfit Budget Tier: {budget_tier}. Ensure individual item prices and overall sum fit strictly within this budget bracket.
+                - Outfit Budget Tier / Source: {budget_tier}.
                 
-                MANDATORY COMPONENT & SHOPPING LINKS MANDATE:
-                1. Every single outfit MUST include: Tops/Layers, Bottoms, Headgear ({headgear_style}), Shoes, and Accessories.
-                2. In the "description" text and in the table breakdown, EVERY single item MUST be formatted as a clickable Markdown link pointing directly to a Google Shopping search query formatted strictly as: `[Brand Item Name](https://www.google.com/search?q=Brand+Item+Name+Color&tbm=shop)`.
-                3. Strictly adhere to the '{selected_palette}' color story across all garments and accessories with zero color clashing.
+                {link_rule}
                 
                 HYPERLINKED TABLE REQUIREMENT ("items_breakdown"):
                 Provide an array called "items_breakdown" containing objects with keys:
-                - "Clothing Item": A Markdown-formatted string with the clickable Google Shopping search link (e.g. `[COS Minimalist Sneakers](https://www.google.com/search?q=COS+Minimalist+Sneakers&tbm=shop)`).
-                - "Estimated Price": Price string (e.g. "$110").
+                - "Clothing Item": A Markdown-formatted string with the clickable shopping link.
+                - "Estimated Price": Price string (e.g. "$25").
                 Also include a "total_price" string key representing the sum.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS (TEXT & IMAGE CONSISTENCY):
-                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying crisp focus, razor-sharp 4K lookbook studio photography, absolute photorealism, and zero blurriness, describing the exact same textured, cardigans/layered outfit as the description).
-                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact textured, layered outfit details matching the description.
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying crisp focus, razor-sharp 4K lookbook studio photography, absolute photorealism, and zero blurriness).
+                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact textured outfit details matching the description.
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
-                - "description": High-end textured outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring active Google Shopping search links for every piece.
+                - "description": High-end textured outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring active shopping links for every piece.
                 - "items_breakdown": List of objects with keys "Clothing Item" and "Estimated Price".
-                - "total_price": Total cost string (e.g. "$250").
-                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact textured outfit with HD 4K studio quality.
+                - "total_price": Total cost string.
+                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact textured outfit.
                 - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact textured outfit.
                 """
                 prompt_parts.append(instructions)
@@ -562,7 +585,7 @@ with tab_generator:
                     
                     conn.commit()
                     conn.close()
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} high-end editorial outfits for your {headgear_style}!")
+                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} editorial outfits for your {headgear_style}!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
