@@ -258,14 +258,14 @@ def db_delete_saved_closet(idx):
 
 def get_trending_fashion_items(category: str) -> str:
     trends = {
-        "turban": "High-end pairings: Heavyweight flannel overshirt worn open over a tucked tee; relaxed knit cardigan with straight-leg denim; premium fleece hoodies with tailored outerwear.",
-        "cap": "High-end pairings: Boxy graphic tees with open camp-collar shirts; zip-up hoodies under unstructured work jackets; tonal earth-tone sweatshirts with relaxed denim.",
-        "beanie": "High-end pairings: Chunky knit cardigans over heavyweight tees; minimalist fleece layers under wool overcoats; relaxed sweatshirts with straight cargos.",
+        "turban": "High-end pairings: Heavyweight flannel overshirt worn open over a tucked tee; slim-fit knit cardigan with slim tapered trousers; premium fleece hoodies with tailored outerwear.",
+        "cap": "High-end pairings: Boxy graphic tees with open camp-collar shirts; zip-up hoodies under unstructured work jackets; tonal earth-tone sweatshirts with slim-fit denim.",
+        "beanie": "High-end pairings: Chunky knit cardigans over heavyweight tees; minimalist fleece layers under wool overcoats; slim-fit sweatshirts with tapered cargos.",
         "tops": "Advanced layering: Premium textured overshirts, waffle-knit thermals, boxy resort shirts, and heavy fleece hoodies.",
-        "bottoms": "Modern proportions: Structured straight-leg denim, relaxed-fit vintage wash jeans, and pleated utility trousers."
+        "bottoms": "Modern proportions: Slim-fit tapered trousers, athletic slim denim, and clean-cut tailored slim chinos."
     }
     key = category.lower().strip()
-    return trends.get(key, f"Curated high-end proportions for {category}: Advanced layering and premium fabric weighting.")
+    return trends.get(key, f"Curated high-end proportions for {category}: Advanced layering and slim tapered silhouettes.")
 
 def call_gemini_outfits(contents, api_key):
     model_name = 'gemini-3.5-flash-lite'
@@ -455,7 +455,7 @@ with tab_generator:
         elif front_key not in st.session_state["model_photos"]:
             st.error(f"Please upload at least the Front photo for '{headgear_style}' in the sidebar before generating.")
         else:
-            with st.spinner(f"Curating exactly {batch_count} editorial outfits featuring diverse color palettes and real-world styling instincts for {weather_range}..."):
+            with st.spinner(f"Curating exactly {batch_count} editorial outfits featuring slim tapered bottoms and diverse color palettes for {weather_range}..."):
                 prompt_parts = []
                 
                 color_palettes_pool = [
@@ -519,6 +519,10 @@ with tab_generator:
                 Act as an elite personal menswear stylist and fashion director. 
                 Generate EXACTLY {batch_count} distinct, high-end outfit concepts with high color variety.
                 
+                STRICT BOTTOMS PROPORTION CONSTRAINT (NO STRAIGHT BOTTOMS):
+                - EVERY SINGLE OUTFIT MUST FEATURE SLIM-FIT, TAPERED BOTTOMS (e.g. slim-fit tapered trousers, athletic slim-fit denim, slim chinos, or tapered cargo pants). 
+                - STRICTLY FORBIDDEN: Straight-cut, loose, baggy, or wide-leg pants are completely prohibited. All bottoms must feature a clean, modern taper down to the ankle.
+                
                 REAL-WORLD STYLING DNA & INSTINCTS (NO BASIC LOOKS):
                 - Never create boring, flat, or basic outfits. Every look must embody real-world editorial styling proportions (e.g., textured knit cardigans layered over crisp crewneck tees, heavyweight flannel overshirts worn open over tonal bases, fleece hoodies paired with unstructured work jackets).
                 - Use deliberate texture contrast (ribbed knits, heavy cotton, washed denim, suede or leather footwear).
@@ -540,15 +544,15 @@ with tab_generator:
                 Also include a "total_price" string key representing the sum.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS (TEXT & IMAGE CONSISTENCY):
-                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying crisp focus, razor-sharp 4K lookbook studio photography, absolute photorealism, and zero blurriness).
-                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact textured outfit details matching the description.
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded image attachments, specifying crisp focus, razor-sharp 4K lookbook studio photography, absolute photorealism, and zero blurriness. Explicitly describe the model wearing **slim-fit tapered trousers/denim** to ensure the photo matches).
+                - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact textured outfit details and **slim-fit tapered bottoms** matching the description.
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
-                - "description": High-end textured outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring active shopping links for every piece.
+                - "description": High-end textured outfit breakdown tailored to {weather_range}, {outfit_vibe} vibe, and {budget_tier}, featuring active shopping links for every piece and explicit slim tapered pants.
                 - "items_breakdown": List of objects with keys "Clothing Item" and "Estimated Price".
                 - "total_price": Total cost string.
-                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact textured outfit.
-                - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact textured outfit.
+                - "gemini_prompt": Photo generation prompt for Gemini Chat detailing this exact textured outfit with slim tapered bottoms.
+                - "chatgpt_prompt": Photo generation prompt for ChatGPT / DALL-E 3 starting with the character profile anchor and detailing this exact outfit with slim tapered bottoms.
                 """
                 prompt_parts.append(instructions)
                 
@@ -587,13 +591,12 @@ with tab_generator:
                     
                     conn.commit()
                     conn.close()
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} editorial outfits for your {headgear_style}!")
+                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} editorial outfits with slim tapered bottoms for your {headgear_style}!")
                 except Exception as e:
                     st.error(f"Error generating outfits: {str(e)}")
 
     st.header("✨ Curated Outfits & Prompts")
     if st.session_state["generated_outfits"]:
-        # Map headgear style to your direct active Gemini chat URLs
         chat_links = {
             "Turban": "https://gemini.google.com/app/c8945d9da6e528c2",
             "Cap": "https://gemini.google.com/app/339436a96ac50945",
@@ -628,7 +631,6 @@ with tab_generator:
                     st.markdown("**2. ChatGPT / DALL-E 3 Prompt:**")
                     st.code(outfit_data["chatgpt_prompt"], language="text")
                     
-                    # GEMINI CHAT QUICK BUTTON (Direct active chat thread)
                     st.markdown(f"[🔗 Open {headgear_style} Gemini Chat]({current_chat_url})")
                     st.markdown("---")
                 
@@ -737,8 +739,8 @@ with tab_closet:
                         st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
                 
                 if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
-                    db_toast = st.toast("Removed from Saved Closet!")
                     db_delete_saved_closet(s_idx)
+                    st.toast("Removed from Saved Closet!")
                     st.rerun()
                 st.markdown("---")
     else:
