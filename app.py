@@ -483,12 +483,11 @@ with tab_generator:
                         prompt_parts.append(f"Angle: {angle_name}")
                         prompt_parts.append(st.session_state["model_photos"][k_slug])
 
-                # ATTACH ACTUAL WARDROBE IMAGES AND INVENTORY TEXT DIRECTLY TO API CALL
                 if source_mode == "My Wardrobe":
-                    prompt_parts.append("\nSTRICT USER WARDROBE INVENTORY (PHOTOS AND DESCRIPTIONS):")
+                    prompt_parts.append("\nSTRICT USER WARDROBE INVENTORY (PHOTOS AND ITEM NUMBERS):")
                     for idx, w_item in enumerate(st.session_state["wardrobe_items"]):
                         prompt_parts.append(f"Wardrobe Item #{idx+1} Description: {w_item['info']}")
-                        prompt_parts.append(w_item['image'])  # Attached actual photo file into Gemini pipeline
+                        prompt_parts.append(w_item['image'])
                 
                 fetched_trends = get_trending_fashion_items(headgear_style)
                 
@@ -498,14 +497,12 @@ with tab_generator:
                 else:
                     pj_rule = "STRICT CONSTRAINT: DO NOT include shorts or pajamas. All outfits must be full-length trousers, jeans, or cargo pants appropriate for the selected vibe and weather."
 
-                # LINK & SOURCE GENERATION RULES
                 link_rule = ""
                 if source_mode == "My Wardrobe":
                     link_rule = """
                     STRICT WARDROBE-ONLY EXCLUSIVE MANDATE:
-                    - You MUST build the outfits EXCLUSIVELY using the actual items provided in the 'STRICT USER WARDROBE INVENTORY' above, referencing their exact visual details from the attached item photos.
-                    - DO NOT invent, assume, or source external clothes from online stores or SHEIN.
-                    - In the itemized price breakdown table ("items_breakdown"), list the exact wardrobe item used, and set the estimated price to "$0 (Owned Wardrobe Item)".
+                    - You MUST build the outfits EXCLUSIVELY using the actual items provided in the 'STRICT USER WARDROBE INVENTORY' above, referencing their exact Item # (e.g., Item #1, Item #2).
+                    - In the itemized breakdown table ("items_breakdown"), explicitly reference the item number (e.g., "Wardrobe Item #3: Chaps Blue Polo") and set the estimated price to "$0 (Owned Wardrobe Item)".
                     - Total estimated cost must be "$0".
                     """
                 elif "SHEIN" in budget_tier:
@@ -539,12 +536,12 @@ with tab_generator:
                 
                 HYPERLINKED TABLE REQUIREMENT ("items_breakdown"):
                 Provide an array called "items_breakdown" containing objects with keys:
-                - "Clothing Item": A Markdown-formatted string with the item name.
-                - "Estimated Price": Price string (e.g. "$0 (Owned Wardrobe Item)" if using wardrobe).
+                - "Clothing Item": A Markdown-formatted string with the item name / Wardrobe Item #.
+                - "Estimated Price": Price string.
                 Also include a "total_price" string key representing the sum.
                 
                 DUAL-PLATFORM PROMPT GENERATION REQUIREMENTS:
-                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded model and wardrobe image attachments, crisp 4K lookbook studio photography, describing slim-fit tapered bottoms and the exact wardrobe pieces shown in the attached photos).
+                - `gemini_prompt`: Designed for Gemini Chat (referencing uploaded model and wardrobe image attachments, crisp 4K lookbook studio photography, describing slim-fit tapered bottoms and exact wardrobe items).
                 - `chatgpt_prompt`: Designed for ChatGPT / DALL-E 3, starting with the character profile anchor: "Using my master character profile locked in this chat (South Asian male, 36 years old, height 5'8", well-groomed dark beard), generate a razor-sharp 4K lookbook studio portrait photo of me wearing..." followed by the exact wardrobe pieces and slim tapered bottoms.
                 
                 Return JSON format with a key "outfits" containing a list of exactly {batch_count} objects, each with:
@@ -704,6 +701,8 @@ with tab_wardrobe:
             col_target = w_cols[w_idx % 4]
             with col_target:
                 st.image(item["image"], use_container_width=True)
+                # CLEAR ITEM NUMBER LABELS ADDED HERE
+                st.markdown(f"**Item #{w_idx + 1}**")
                 st.caption(item["info"])
                 if st.button(f"Remove Item #{w_idx+1}", key=f"del_w_{w_idx}"):
                     db_delete_wardrobe_item(w_idx)
