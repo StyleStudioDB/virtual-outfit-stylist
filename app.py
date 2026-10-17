@@ -9,6 +9,7 @@ import shutil
 from io import BytesIO
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
 
 # Import Google GenAI SDK safely
@@ -360,6 +361,108 @@ def call_gemini_outfits(contents, api_key):
 
 st.title("👔 Personal High-End AI Stylist & Companion")
 
+# ==========================================
+# 10-MINUTE BACKUP REMINDER POPUP (JS INJECTED)
+# ==========================================
+if os.path.exists(DB_FILE):
+    with open(DB_FILE, "rb") as f:
+        db_b64 = base64.b64encode(f.read()).decode("utf-8")
+    
+    backup_js_popup = f"""
+    <script>
+    const INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+    const TIMEOUT_MS = 60 * 1000;       // 1 minute timeout for auto-cancel (treated as "no")
+
+    function triggerBackupPrompt() {{
+        // We simulate a confirmation box with a timeout handling.
+        // Standard window.confirm blocks execution. To support a 1-minute timeout,
+        // we use a custom non-blocking overlay or timed confirm approach.
+        
+        let userConfirmed = false;
+        let responded = false;
+
+        let div = document.createElement('div');
+        div.style.position = 'fixed';
+        div.style.bottom = '20px';
+        div.style.right = '20px';
+        div.style.backgroundColor = '#1e1e1e';
+        div.style.color = '#ffffff';
+        div.style.padding = '20px';
+        div.style.borderRadius = '8px';
+        div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+        div.style.zIndex = '999999';
+        div.style.fontFamily = 'sans-serif';
+        div.style.maxWidth = '320px';
+        
+        div.innerHTML = `
+            <h4 style="margin: 0 0 10px 0; color: #4CAF50;">💾 Backup Reminder</h4>
+            <p style="margin: 0 0 15px 0; font-size: 14px;">10 minutes have passed. Would you like to download your latest database backup?</p>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button id="backupNo" style="padding: 6px 12px; background: #555; color: white; border: none; border-radius: 4px; cursor: pointer;">No</button>
+                <button id="backupYes" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Yes, Download</button>
+            </div>
+            <p id="timerTxt" style="margin: 10px 0 0 0; font-size: 11px; color: #aaa; text-align: right;">Auto-dismissing in 60s (No)</p>
+        `;
+        
+        document.body.appendChild(div);
+
+        let secondsLeft = 60;
+        let countdownTimer = setInterval(() => {{
+            secondsLeft--;
+            let tElem = document.getElementById('timerTxt');
+            if(tElem) tElem.innerText = `Auto-dismissing in ${{secondsLeft}}s (No)`;
+        }}, 1000);
+
+        let timeoutId = setTimeout(() => {{
+            if (!responded) {{
+                responded = true;
+                clearInterval(countdownTimer);
+                document.body.removeChild(div);
+                // Treated as No - schedule next 10 mins
+                scheduleNextPrompt();
+            }}
+        }}, TIMEOUT_MS);
+
+        document.getElementById('backupYes').onclick = function() {{
+            if (!responded) {{
+                responded = true;
+                clearTimeout(timeoutId);
+                clearInterval(countdownTimer);
+                document.body.removeChild(div);
+                
+                // Trigger file download
+                const link = document.createElement('a');
+                link.href = 'data:application/octet-stream;base64,{db_b64}';
+                link.download = 'fashion_stylist_backup_' + new Date().toISOString().slice(0,10) + '.db';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                scheduleNextPrompt();
+            }}
+        }};
+
+        document.getElementById('backupNo').onclick = function() {{
+            if (!responded) {{
+                responded = true;
+                clearTimeout(timeoutId);
+                clearInterval(countdownTimer);
+                document.body.removeChild(div);
+                scheduleNextPrompt();
+            }}
+        }};
+    }}
+
+    function scheduleNextPrompt() {{
+        setTimeout(triggerBackupPrompt, INTERVAL_MS);
+    }}
+
+    // Start initial timer loop
+    setTimeout(triggerBackupPrompt, INTERVAL_MS);
+    </script>
+    """
+    components.html(backup_js_popup, height=0, width=0)
+
 st.sidebar.header("🔑 API Settings")
 default_key = st.secrets.get("GEMINI_API_KEY", "")
 api_key = st.sidebar.text_input(
@@ -369,6 +472,9 @@ api_key = st.sidebar.text_input(
     help="Loaded automatically from Streamlit Secrets if configured."
 )
 
+# ==========================================
+# DATABASE BACKUP & RESTORE TOOLS (SIDEBAR)
+# ==========================================
 st.sidebar.markdown("---")
 st.sidebar.header("💾 Data Management & Recovery")
 
