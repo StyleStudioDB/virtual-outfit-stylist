@@ -5,6 +5,7 @@ import uuid
 import random
 import sqlite3
 import base64
+import shutil
 from io import BytesIO
 import pandas as pd
 import streamlit as st
@@ -30,6 +31,59 @@ st.set_page_config(page_title="Personal High-End AI Stylist & Companion", layout
 # UNIFIED SQLITE DATABASE STORAGE SETUP
 # ==========================================
 DB_FILE = "fashion_stylist.db"
+BACKUP_DIR = "db_backups"
+
+# ==========================================
+# AUTOMATED BACKUP SYSTEM
+# ==========================================
+def run_automated_backup():
+    """Creates a time-stamped backup of the SQLite DB on app startup."""
+    # 1. Ensure backup directory exists
+    if not os.path.exists(BACKUP_DIR):
+        try:
+            os.makedirs(BACKUP_DIR)
+            st.sidebar.info(f"Automated Backup: Created '{BACKUP_DIR}' folder.")
+        except Exception as e:
+            st.error(f"Automated Backup: Could not create backup directory: {e}")
+            return
+
+    # 2. Define backup file path with date/time stamp
+    time_str = time.strftime("%Y%m%d-%H%M%S")
+    backup_filename = f"fashion_stylist_autobackup_{time_str}.db"
+    backup_path = os.path.join(BACKUP_DIR, backup_filename)
+
+    # 3. Perform the backup if DB exists
+    if os.path.exists(DB_FILE):
+        try:
+            shutil.copy2(DB_FILE, backup_path)
+            # Optional: Keep only the latest X backups to save space
+            manage_backup_rotation(max_backups=10)
+            # st.sidebar.success(f"Automated Backup: Created {backup_filename}") # Commented out to keep UI clean on start
+        except Exception as e:
+            st.error(f"Automated Backup Failed: {e}")
+    else:
+        # This will happen on first run, which is fine.
+        pass
+
+def manage_backup_rotation(max_backups=10):
+    """Deletes older backups, keeping only the latest 'max_backups'."""
+    if not os.path.exists(BACKUP_DIR):
+        return
+    backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith("fashion_stylist_autobackup_") and f.endswith(".db")]
+    backups.sort() # Sort chronologically
+
+    if len(backups) > max_backups:
+        num_to_delete = len(backups) - max_backups
+        for i in range(num_to_delete):
+            file_to_delete = os.path.join(BACKUP_DIR, backups[i])
+            try:
+                os.remove(file_to_delete)
+            except Exception:
+                pass # Fail silently on rotation cleanup
+
+# RUN AUTOMATED BACKUP ONCE AT APP STARTUP
+run_automated_backup()
+
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -327,29 +381,58 @@ api_key = st.sidebar.text_input(
 )
 
 # ==========================================
-# DATABASE BACKUP & RESTORE TOOLS (SIDEBAR)
+# DATABASE BACKUP & RESTORE TOOLS (UPDATED)
 # ==========================================
 st.sidebar.markdown("---")
-st.sidebar.header("💾 Data Backup & Sync")
+st.sidebar.header("💾 Data Management & Recovery")
+
+# Automated Backup Status in UI (Info only)
+if os.path.exists(BACKUP_DIR):
+    backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith("fashion_stylist_autobackup_") and f.endswith(".db")]
+    if backups:
+        latest_auto = backups[-1]
+        # Extract date/time from filename for display (format: YYYYMMDD-HHMMSS)
+        try:
+            date_part = latest_auto[27:31] + "-" + latest_auto[31:33] + "-" + latest_auto[33:35]
+            time_part = latest_auto[36:38] + ":" + latest_auto[38:40]
+            st.sidebar.success(f"✅ Auto-Backup Active: Last saved {date_part} @ {time_part}")
+        except Exception:
+            st.sidebar.success(f"✅ Auto-Backup Active: {latest_auto.replace('fashion_stylist_autobackup_', '').replace('.db', '')}")
+    else:
+        st.sidebar.warning("⚠️ Auto-Backup Initialized.")
+else:
+    # Create directory silently if it somehow got deleted while running
+    try:
+        os.makedirs(BACKUP_DIR)
+        st.sidebar.warning("⚠️ Auto-Backup Directory Re-Initialized.")
+    except Exception:
+        st.sidebar.error("⚠️ Auto-Backup Directory Not Found.")
+
 if os.path.exists(DB_FILE):
     with open(DB_FILE, "rb") as f:
         db_bytes = f.read()
     st.sidebar.download_button(
-        label="📥 Download DB Backup",
+        label="📥 Download Current DB Backup",
         data=db_bytes,
-        file_name="fashion_stylist_backup.db",
+        file_name=f"fashion_stylist_manual_backup_{time.strftime('%Y%m%d')}.db",
         mime="application/octet-stream",
-        help="Download your database file before updating code to keep your photos and saved outfits safe."
+        help="Download your database file *right now* to keep your photos and saved outfits safe."
     )
 
-uploaded_backup = st.sidebar.file_uploader("📤 Restore DB Backup:", type=["db"], key="restore_db_uploader")
+uploaded_backup = st.sidebar.file_uploader("📤 Restore DB from Backup File:", type=["db"], key="restore_db_uploader")
 if uploaded_backup is not None:
-    if st.sidebar.button("⚡ Apply Backup File"):
+    if st.sidebar.button("⚡ Apply Restore File"):
         with open(DB_FILE, "wb") as f:
             f.write(uploaded_backup.getbuffer())
         load_db_data()
         st.sidebar.success("Database restored successfully! Refreshing...")
         st.rerun()
+
+# Link to specific backup folder management
+with st.sidebar.expander("📂 Manage Backup Files", expanded=False):
+    st.markdown(f"Backups are stored in the local folder: `{BACKUP_DIR}`")
+    st.markdown("To free up space, you can manually delete older files from that folder on your computer.")
+
 
 st.sidebar.markdown("---")
 st.sidebar.header("1. Model Configuration")
@@ -393,7 +476,7 @@ budget_tier = st.sidebar.radio(
         "SHEIN Tier 2 ($80 - $150 total | Multi-piece SHEIN outfits with direct SHEIN search links)",
         "SHEIN Tier 3 ($150 - $300 total | Premium layered SHEIN styling with complete accessories)",
         "Budget-Friendly (~$150 total | Uniqlo, SHEIN, ASOS, H&M)",
-        "Mid-Tier ($150 - $300 total | Abercrombie, Carhartt WIP, Levi's, COS)",
+        "Mid-Tier (~$150 - $300 total | Abercrombie, Carhartt WIP, Levi's, COS)",
         "Luxury / High-End ($300 - $600 total | Buck Mason, Noah, Acne Studios, Stüssy)"
     ],
     index=0
@@ -583,164 +666,3 @@ with tab_generator:
                             new_gen["gemini_prompt"],
                             new_gen["chatgpt_prompt"],
                             json.dumps(new_gen["items_breakdown"]),
-                            new_gen["total_price"]
-                        ))
-                    
-                    conn.commit()
-                    conn.close()
-                    st.success(f"Successfully generated {len(st.session_state['generated_outfits'])} strict wardrobe-exclusive outfits for your {headgear_style}!")
-                except Exception as e:
-                    st.error(f"Error generating outfits: {str(e)}")
-
-    st.header("✨ Curated Outfits & Prompts")
-    if st.session_state["generated_outfits"]:
-        chat_links = {
-            "Turban": "https://gemini.google.com/app/c8945d9da6e528c2",
-            "Cap": "https://gemini.google.com/app/339436a96ac50945",
-            "Beanie": "https://gemini.google.com/app/02d18cedc70e999e"
-        }
-        current_chat_url = chat_links.get(headgear_style, "https://gemini.google.com")
-
-        for idx, outfit_data in enumerate(st.session_state["generated_outfits"]):
-            with st.expander(f"Outfit Concept #{idx + 1}", expanded=True):
-                col_txt, col_img = st.columns([2, 1])
-                
-                with col_txt:
-                    st.markdown(f"### Look Breakdown & Wardrobe Items\n{outfit_data['text']}")
-                    st.markdown("---")
-                    
-                    if outfit_data.get("items_breakdown"):
-                        st.markdown("**👕 Wardrobe Items Breakdown:**")
-                        table_markdown = "| Item / Accessory | Status / Price |\n| :--- | :--- |\n"
-                        for row in outfit_data["items_breakdown"]:
-                            item_name = row.get("Clothing Item", "")
-                            item_price = row.get("Estimated Price", "")
-                            table_markdown += f"| {item_name} | {item_price} |\n"
-                        
-                        st.markdown(table_markdown)
-                        if outfit_data.get("total_price"):
-                            st.markdown(f"**Total Cost:** `{outfit_data['total_price']}`")
-                        st.markdown("---")
-                    
-                    st.markdown("**1. Gemini Chat Prompt:**")
-                    st.code(outfit_data["gemini_prompt"], language="text")
-                    
-                    st.markdown("**2. ChatGPT / DALL-E 3 Prompt:**")
-                    st.code(outfit_data["chatgpt_prompt"], language="text")
-                    
-                    st.markdown(f"[🔗 Open {headgear_style} Gemini Chat]({current_chat_url})")
-                    st.markdown("---")
-                
-                with col_img:
-                    if outfit_data.get("image"):
-                        st.image(outfit_data["image"], caption=f"Try-On Result #{idx+1}", use_container_width=True)
-                        if st.button("🔄 Replace Result Image", key=f"replace_img_{idx}"):
-                            db_save_generated_outfit_image(idx, None)
-                            st.rerun()
-                    else:
-                        uploaded_img = st.file_uploader(
-                            f"Upload Try-On Image #{idx+1}:", 
-                            type=["jpg", "jpeg", "png"], 
-                            key=f"tryon_img_up_{idx}"
-                        )
-                        if uploaded_img:
-                            img = Image.open(uploaded_img)
-                            db_save_generated_outfit_image(idx, img)
-                            st.rerun()
-
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    if st.button(f"💾 Save Outfit #{idx + 1}", key=f"save_gen_{idx}"):
-                        db_save_to_closet(outfit_data)
-                        st.toast("Saved permanently to Closet!")
-                with c2:
-                    if st.button(f"🗑️ Delete Outfit #{idx + 1}", key=f"del_gen_{idx}"):
-                        db_delete_generated_outfit(idx)
-                        st.rerun()
-
-with tab_wardrobe:
-    st.header("👔 My Personal Wardrobe")
-    st.subheader("Upload Clothing & Accessories")
-    
-    new_wardrobe_files = st.file_uploader(
-        "Upload Clothing/Accessories Photos:", 
-        type=["jpg", "jpeg", "png"], 
-        accept_multiple_files=True,
-        key="main_wardrobe_uploader"
-    )
-    
-    if new_wardrobe_files and api_key:
-        if st.button("⚡ Categorize & Add Items", type="primary"):
-            with st.spinner("AI is analyzing and categorizing wardrobe photos..."):
-                for w_file in new_wardrobe_files:
-                    img = Image.open(w_file)
-                    cat_prompt = [
-                        img, 
-                        "Analyze this fashion item image precisely. Return ONLY a single line formatted as: 'Category: Brief Description' (e.g., 'Tops: Grey and White Vertical Striped Short-Sleeve Button-Down Shirt' or 'Tops: Chaps Blue Striped Polo Shirt'). Be exact about patterns, colors, and garment types."
-                    ]
-                    try:
-                        if NEW_SDK:
-                            client = genai.Client(api_key=api_key)
-                            resp = client.models.generate_content(model='gemini-3.5-flash-lite', contents=cat_prompt)
-                            analysis_text = resp.text
-                        else:
-                            genai.configure(api_key=api_key)
-                            m = genai.GenerativeModel('gemini-3.5-flash-lite')
-                            resp = m.generate_content(cat_prompt)
-                            analysis_text = resp.text
-                        db_save_wardrobe_item(img, analysis_text.strip())
-                    except Exception as e:
-                        st.error(f"Failed to analyze image: {str(e)}")
-            st.rerun()
-
-    st.markdown("---")
-    st.subheader("Categorized Inventory")
-    if st.session_state["wardrobe_items"]:
-        w_cols = st.columns(4)
-        for w_idx, item in enumerate(st.session_state["wardrobe_items"]):
-            col_target = w_cols[w_idx % 4]
-            with col_target:
-                st.image(item["image"], use_container_width=True)
-                # CLEAR ITEM NUMBER LABELS ADDED HERE
-                st.markdown(f"**Item #{w_idx + 1}**")
-                st.caption(item["info"])
-                if st.button(f"Remove Item #{w_idx+1}", key=f"del_w_{w_idx}"):
-                    db_delete_wardrobe_item(w_idx)
-                    st.rerun()
-    else:
-        st.info("No wardrobe items added yet. Upload photos above to build your inventory.")
-
-with tab_closet:
-    st.header("🔒 Saved Closet")
-    if st.session_state["saved_outfits"]:
-        for s_idx, item in enumerate(st.session_state["saved_outfits"]):
-            with st.container():
-                col_stxt, col_simg = st.columns([2, 1])
-                with col_stxt:
-                    st.markdown(f"**Saved Look #{s_idx + 1}:**\n\n{item['text']}")
-                    st.markdown("---")
-                    
-                    if item.get("items_breakdown"):
-                        st.markdown("**👕 Wardrobe Items Breakdown:**")
-                        table_markdown = "| Item / Accessory | Status / Price |\n| :--- | :--- |\n"
-                        for row in item["items_breakdown"]:
-                            item_name = row.get("Clothing Item", "")
-                            item_price = row.get("Estimated Price", "")
-                            table_markdown += f"| {item_name} | {item_price} |\n"
-                        
-                        st.markdown(table_markdown)
-                        if item.get("total_price"):
-                            st.markdown(f"**Total Cost:** `{item['total_price']}`")
-                        st.markdown("---")
-                
-                with col_simg:
-                    if item.get("image"):
-                        st.image(item["image"], caption=f"Saved Look #{s_idx+1}", use_container_width=True)
-                
-                if st.button(f"🗑️ Delete Saved Outfit #{s_idx + 1}", key=f"del_saved_{s_idx}"):
-                    db_delete_saved_closet(s_idx)
-                    st.toast("Removed from Saved Closet!")
-                    st.rerun()
-                st.markdown("---")
-    else:
-        st.info("No saved outfits yet. Click '💾 Save Outfit' in the Outfit Generator tab to store looks here.")
