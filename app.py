@@ -362,7 +362,7 @@ def call_gemini_outfits(contents, api_key):
 st.title("👔 Personal High-End AI Stylist & Companion")
 
 # ==========================================
-# 10-MINUTE BACKUP REMINDER POPUP (JS INJECTED)
+# 10-MINUTE BACKUP REMINDER POPUP (ANDROID FRIENDLY)
 # ==========================================
 if os.path.exists(DB_FILE):
     with open(DB_FILE, "rb") as f:
@@ -370,17 +370,11 @@ if os.path.exists(DB_FILE):
     
     backup_js_popup = f"""
     <script>
-    const INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-    const TIMEOUT_MS = 60 * 1000;       // 1 minute timeout for auto-cancel (treated as "no")
+    const INTERVAL_MS = 10 * 60 * 1000; 
+    const TIMEOUT_MS = 60 * 1000;       
 
     function triggerBackupPrompt() {{
-        // We simulate a confirmation box with a timeout handling.
-        // Standard window.confirm blocks execution. To support a 1-minute timeout,
-        // we use a custom non-blocking overlay or timed confirm approach.
-        
-        let userConfirmed = false;
         let responded = false;
-
         let div = document.createElement('div');
         div.style.position = 'fixed';
         div.style.bottom = '20px';
@@ -396,7 +390,7 @@ if os.path.exists(DB_FILE):
         
         div.innerHTML = `
             <h4 style="margin: 0 0 10px 0; color: #4CAF50;">💾 Backup Reminder</h4>
-            <p style="margin: 0 0 15px 0; font-size: 14px;">10 minutes have passed. Would you like to download your latest database backup?</p>
+            <p style="margin: 0 0 15px 0; font-size: 14px;">10 minutes have passed. Download your database backup?</p>
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <button id="backupNo" style="padding: 6px 12px; background: #555; color: white; border: none; border-radius: 4px; cursor: pointer;">No</button>
                 <button id="backupYes" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Yes, Download</button>
@@ -418,7 +412,6 @@ if os.path.exists(DB_FILE):
                 responded = true;
                 clearInterval(countdownTimer);
                 document.body.removeChild(div);
-                // Treated as No - schedule next 10 mins
                 scheduleNextPrompt();
             }}
         }}, TIMEOUT_MS);
@@ -430,7 +423,6 @@ if os.path.exists(DB_FILE):
                 clearInterval(countdownTimer);
                 document.body.removeChild(div);
                 
-                // Trigger file download
                 const link = document.createElement('a');
                 link.href = 'data:application/octet-stream;base64,{db_b64}';
                 link.download = 'fashion_stylist_backup_' + new Date().toISOString().slice(0,10) + '.db';
@@ -457,7 +449,6 @@ if os.path.exists(DB_FILE):
         setTimeout(triggerBackupPrompt, INTERVAL_MS);
     }}
 
-    // Start initial timer loop
     setTimeout(triggerBackupPrompt, INTERVAL_MS);
     </script>
     """
@@ -472,9 +463,6 @@ api_key = st.sidebar.text_input(
     help="Loaded automatically from Streamlit Secrets if configured."
 )
 
-# ==========================================
-# DATABASE BACKUP & RESTORE TOOLS (SIDEBAR)
-# ==========================================
 st.sidebar.markdown("---")
 st.sidebar.header("💾 Data Management & Recovery")
 
@@ -492,12 +480,12 @@ if os.path.exists(BACKUP_DIR):
 if os.path.exists(DB_FILE):
     with open(DB_FILE, "rb") as f:
         db_bytes = f.read()
-    st.sidebar.download_button(
-        label="📥 Download Current DB Backup",
-        data=db_bytes,
-        file_name=f"fashion_stylist_manual_backup_{time.strftime('%Y%m%d')}.db",
-        mime="application/octet-stream",
-        help="Download your database file right now to keep your photos and saved outfits safe."
+    
+    # Android-friendly data URI download fallback link in sidebar
+    b64_db = base64.b64encode(db_bytes).decode("utf-8")
+    st.sidebar.markdown(
+        f'<a href="data:application/octet-stream;base64,{b64_db}" download="fashion_stylist_manual_backup.db" style="display:inline-block;padding:10px 15px;background-color:#FF4B4B;color:white;text-align:center;text-decoration:none;border-radius:4px;font-weight:bold;width:100%;">📥 Tap Here to Download DB Backup</a>',
+        unsafe_allow_html=True
     )
 
 uploaded_backup = st.sidebar.file_uploader("📤 Restore DB from Backup File:", type=["db"], key="restore_db_uploader")
@@ -530,7 +518,14 @@ for angle in angles:
                 db_delete_model_photo(key_str)
                 st.rerun()
     else:
-        uploaded_file = st.sidebar.file_uploader(f"Upload {headgear_style} {angle}:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
+        # Added camera input support for Android devices
+        upload_choice = st.radio(f"Add {headgear_style} {angle}:", ["Upload File", "Take Photo"], key=f"choice_{key_str}", horizontal=True)
+        uploaded_file = None
+        if upload_choice == "Upload File":
+            uploaded_file = st.sidebar.file_uploader(f"Choose {headgear_style} {angle} File:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
+        else:
+            uploaded_file = st.sidebar.camera_input(f"Snap {headgear_style} {angle} Camera:", key=f"cam_{key_str}")
+            
         if uploaded_file:
             img = Image.open(uploaded_file)
             db_save_model_photo(key_str, img)
@@ -796,11 +791,14 @@ with tab_generator:
                             db_save_generated_outfit_image(idx, None)
                             st.rerun()
                     else:
-                        uploaded_img = st.file_uploader(
-                            f"Upload Try-On Image #{idx+1}:", 
-                            type=["jpg", "jpeg", "png"], 
-                            key=f"tryon_img_up_{idx}"
-                        )
+                        # Android-friendly try-on upload option
+                        tryon_choice = st.radio(f"Add Try-On Image #{idx+1}:", ["Upload File", "Take Photo"], key=f"t_choice_{idx}", horizontal=True)
+                        uploaded_img = None
+                        if tryon_choice == "Upload File":
+                            uploaded_img = st.file_uploader(f"Choose Try-On File #{idx+1}:", type=["jpg", "jpeg", "png"], key=f"tryon_img_up_{idx}")
+                        else:
+                            uploaded_img = st.camera_input(f"Snap Try-On Camera #{idx+1}:", key=f"tryon_cam_{idx}")
+                            
                         if uploaded_img:
                             img = Image.open(uploaded_img)
                             db_save_generated_outfit_image(idx, img)
@@ -820,13 +818,22 @@ with tab_wardrobe:
     st.header("👔 My Personal Wardrobe")
     st.subheader("Upload Clothing & Accessories")
     
-    new_wardrobe_files = st.file_uploader(
-        "Upload Clothing/Accessories Photos:", 
-        type=["jpg", "jpeg", "png"], 
-        accept_multiple_files=True,
-        key="main_wardrobe_uploader"
-    )
+    # Android-friendly wardrobe upload / camera choice
+    w_input_mode = st.radio("Add Wardrobe Method:", ["Upload Files", "Take Photos with Camera"], key="w_input_mode", horizontal=True)
     
+    new_wardrobe_files = []
+    if w_input_mode == "Upload Files":
+        new_wardrobe_files = st.file_uploader(
+            "Upload Clothing/Accessories Photos:", 
+            type=["jpg", "jpeg", "png"], 
+            accept_multiple_files=True,
+            key="main_wardrobe_uploader"
+        )
+    else:
+        cam_file = st.camera_input("Snap Wardrobe Item:", key="main_wardrobe_cam")
+        if cam_file:
+            new_wardrobe_files = [cam_file]
+
     if new_wardrobe_files and api_key:
         if st.button("⚡ Categorize & Add Items", type="primary"):
             with st.spinner("AI is analyzing and categorizing wardrobe photos..."):
