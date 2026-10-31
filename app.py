@@ -496,23 +496,20 @@ for angle in angles:
     if key_str in st.session_state["model_photos"]:
         col_img, col_del = st.sidebar.columns([3, 1])
         with col_img:
-            st.caption(f"✓ {headgear_style} - {angle} Saved")
+            st.sidebar.caption(f"✓ {headgear_style} - {angle} Saved")
         with col_del:
-            if st.button("🗑️", key=f"del_model_{key_str}"):
+            if st.sidebar.button("🗑️", key=f"del_model_{key_str}"):
                 db_delete_model_photo(key_str)
                 st.rerun()
     else:
-        upload_choice = st.radio(f"Add {headgear_style} {angle}:", ["Upload File", "Take Photo"], key=f"choice_{key_str}", horizontal=True)
-        uploaded_file = None
-        if upload_choice == "Upload File":
-            uploaded_file = st.sidebar.file_uploader(f"Choose {headgear_style} {angle} File:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
-        else:
-            uploaded_file = st.sidebar.camera_input(f"Snap {headgear_style} {angle} Camera:", key=f"cam_{key_str}")
-            
-        if uploaded_file:
-            img = Image.open(uploaded_file)
-            db_save_model_photo(key_str, img)
-            st.rerun()
+        with st.sidebar.form(key=f"form_model_{key_str}"):
+            st.markdown(f"**Add {headgear_style} {angle}:**")
+            uploaded_file = st.file_uploader(f"Choose file:", type=["jpg", "jpeg", "png"], key=f"upload_{key_str}")
+            submitted = st.form_submit_button("💾 Save Photo")
+            if submitted and uploaded_file is not None:
+                img = Image.open(uploaded_file)
+                db_save_model_photo(key_str, img)
+                st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.header("2. Generation Settings")
@@ -774,17 +771,13 @@ with tab_generator:
                             db_save_generated_outfit_image(idx, None)
                             st.rerun()
                     else:
-                        tryon_choice = st.radio(f"Add Try-On Image #{idx+1}:", ["Upload File", "Take Photo"], key=f"t_choice_{idx}", horizontal=True)
-                        uploaded_img = None
-                        if tryon_choice == "Upload File":
-                            uploaded_img = st.file_uploader(f"Choose Try-On File #{idx+1}:", type=["jpg", "jpeg", "png"], key=f"tryon_img_up_{idx}")
-                        else:
-                            uploaded_img = st.camera_input(f"Snap Try-On Camera #{idx+1}:", key=f"tryon_cam_{idx}")
-                            
-                        if uploaded_img:
-                            img = Image.open(uploaded_img)
-                            db_save_generated_outfit_image(idx, img)
-                            st.rerun()
+                        with st.form(key=f"form_tryon_{idx}"):
+                            uploaded_img = st.file_uploader(f"Choose Try-On Photo #{idx+1}:", type=["jpg", "jpeg", "png"], key=f"tryon_img_up_{idx}")
+                            submit_tryon = st.form_submit_button("💾 Save Try-On Image")
+                            if submit_tryon and uploaded_img is not None:
+                                img = Image.open(uploaded_img)
+                                db_save_generated_outfit_image(idx, img)
+                                st.rerun()
 
                 c1, c2 = st.columns([1, 1])
                 with c1:
@@ -800,23 +793,16 @@ with tab_wardrobe:
     st.header("👔 My Personal Wardrobe")
     st.subheader("Upload Clothing & Accessories")
     
-    w_input_mode = st.radio("Add Wardrobe Method:", ["Upload Files", "Take Photos with Camera"], key="w_input_mode", horizontal=True)
-    
-    new_wardrobe_files = []
-    if w_input_mode == "Upload Files":
+    with st.form(key="form_wardrobe_upload"):
         new_wardrobe_files = st.file_uploader(
             "Upload Clothing/Accessories Photos:", 
             type=["jpg", "jpeg", "png"], 
             accept_multiple_files=True,
             key="main_wardrobe_uploader"
         )
-    else:
-        cam_file = st.camera_input("Snap Wardrobe Item:", key="main_wardrobe_cam")
-        if cam_file:
-            new_wardrobe_files = [cam_file]
-
-    if new_wardrobe_files and api_key:
-        if st.button("⚡ Categorize & Add Items", type="primary"):
+        submit_wardrobe = st.form_submit_button("⚡ Categorize & Add Items", type="primary")
+        
+        if submit_wardrobe and new_wardrobe_files and api_key:
             with st.spinner("AI is analyzing and categorizing wardrobe photos..."):
                 for w_file in new_wardrobe_files:
                     img = Image.open(w_file)
