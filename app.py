@@ -5,11 +5,9 @@ import uuid
 import random
 import sqlite3
 import base64
-import shutil
 from io import BytesIO
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from PIL import Image
 
 # Import Google GenAI SDK safely
@@ -32,44 +30,6 @@ st.set_page_config(page_title="Personal High-End AI Stylist & Companion", layout
 # DATABASE STORAGE SETUP
 # ==========================================
 DB_FILE = "fashion_stylist.db"
-BACKUP_DIR = "db_backups"
-
-def run_automated_backup():
-    """Creates a time-stamped backup of the SQLite DB on app startup."""
-    if not os.path.exists(BACKUP_DIR):
-        try:
-            os.makedirs(BACKUP_DIR)
-        except Exception:
-            return
-
-    time_str = time.strftime("%Y%m%d-%H%M%S")
-    backup_filename = f"fashion_stylist_autobackup_{time_str}.db"
-    backup_path = os.path.join(BACKUP_DIR, backup_filename)
-
-    if os.path.exists(DB_FILE):
-        try:
-            shutil.copy2(DB_FILE, backup_path)
-            manage_backup_rotation(max_backups=10)
-        except Exception:
-            pass
-
-def manage_backup_rotation(max_backups=10):
-    """Deletes older backups, keeping only the latest 'max_backups'."""
-    if not os.path.exists(BACKUP_DIR):
-        return
-    backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith("fashion_stylist_autobackup_") and f.endswith(".db")]
-    backups.sort()
-
-    if len(backups) > max_backups:
-        num_to_delete = len(backups) - max_backups
-        for i in range(num_to_delete):
-            file_to_delete = os.path.join(BACKUP_DIR, backups[i])
-            try:
-                os.remove(file_to_delete)
-            except Exception:
-                pass
-
-run_automated_backup()
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -357,99 +317,6 @@ def call_gemini_outfits(contents, api_key):
 
 st.title("👔 Personal High-End AI Stylist & Companion")
 
-# ==========================================
-# 10-MINUTE BACKUP REMINDER POPUP
-# ==========================================
-if os.path.exists(DB_FILE):
-    with open(DB_FILE, "rb") as f:
-        db_b64 = base64.b64encode(f.read()).decode("utf-8")
-    
-    backup_js_popup = f"""
-    <script>
-    const INTERVAL_MS = 10 * 60 * 1000; 
-    const TIMEOUT_MS = 60 * 1000;       
-
-    function triggerBackupPrompt() {{
-        let responded = false;
-        let div = document.createElement('div');
-        div.style.position = 'fixed';
-        div.style.bottom = '20px';
-        div.style.right = '20px';
-        div.style.backgroundColor = '#1e1e1e';
-        div.style.color = '#ffffff';
-        div.style.padding = '20px';
-        div.style.borderRadius = '8px';
-        div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-        div.style.zIndex = '999999';
-        div.style.fontFamily = 'sans-serif';
-        div.style.maxWidth = '320px';
-        
-        div.innerHTML = `
-            <h4 style="margin: 0 0 10px 0; color: #4CAF50;">💾 Backup Reminder</h4>
-            <p style="margin: 0 0 15px 0; font-size: 14px;">10 minutes have passed. Download your database backup?</p>
-            <div style="display: flex; justify-content: flex-end; gap: 10px;">
-                <button id="backupNo" style="padding: 6px 12px; background: #555; color: white; border: none; border-radius: 4px; cursor: pointer;">No</button>
-                <button id="backupYes" style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">Yes, Download</button>
-            </div>
-            <p id="timerTxt" style="margin: 10px 0 0 0; font-size: 11px; color: #aaa; text-align: right;">Auto-dismissing in 60s (No)</p>
-        `;
-        
-        document.body.appendChild(div);
-
-        let secondsLeft = 60;
-        let countdownTimer = setInterval(() => {{
-            secondsLeft--;
-            let tElem = document.getElementById('timerTxt');
-            if(tElem) tElem.innerText = `Auto-dismissing in ${{secondsLeft}}s (No)`;
-        }}, 1000);
-
-        let timeoutId = setTimeout(() => {{
-            if (!responded) {{
-                responded = true;
-                clearInterval(countdownTimer);
-                document.body.removeChild(div);
-                scheduleNextPrompt();
-            }}
-        }}, TIMEOUT_MS);
-
-        document.getElementById('backupYes').onclick = function() {{
-            if (!responded) {{
-                responded = true;
-                clearTimeout(timeoutId);
-                clearInterval(countdownTimer);
-                document.body.removeChild(div);
-                
-                const link = document.createElement('a');
-                link.href = 'data:application/octet-stream;base64,{db_b64}';
-                link.download = 'fashion_stylist_backup_' + new Date().toISOString().slice(0,10) + '.db';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                scheduleNextPrompt();
-            }}
-        }};
-
-        document.getElementById('backupNo').onclick = function() {{
-            if (!responded) {{
-                responded = true;
-                clearTimeout(timeoutId);
-                clearInterval(countdownTimer);
-                document.body.removeChild(div);
-                scheduleNextPrompt();
-            }}
-        }};
-    }}
-
-    function scheduleNextPrompt() {{
-        setTimeout(triggerBackupPrompt, INTERVAL_MS);
-    }}
-
-    setTimeout(triggerBackupPrompt, INTERVAL_MS);
-    </script>
-    """
-    components.html(backup_js_popup, height=0, width=0)
-
 st.sidebar.header("🔑 API Settings")
 default_key = st.secrets.get("GEMINI_API_KEY", "")
 api_key = st.sidebar.text_input(
@@ -460,7 +327,7 @@ api_key = st.sidebar.text_input(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.header("💾 Data Management & Recovery")
+st.sidebar.header("💾 Data Backup & Recovery")
 
 if os.path.exists(DB_FILE):
     with open(DB_FILE, "rb") as f:
